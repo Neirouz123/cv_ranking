@@ -1,10 +1,7 @@
 """
+--------
 nodes.py
 --------
-Step 3: llm_extract_cv now makes a real call to Groq (Llama 3.3 70B) for
-structured extraction, replacing the Step 2 stub. Falls back to the
-regex-based profile if the API call or JSON parsing fails, so the app
-never hard-crashes on an LLM hiccup.
 """
 
 import json
@@ -15,7 +12,7 @@ from langchain_groq import ChatGroq
 
 from src.extraction.extractor import ExtractedProfile, find_skills, flatten_skills
 from src.extraction.skills_data import all_skills_flat, skill_category
-from src.scoring.scorer import score_candidate
+from src.scoring.scorer import ScoreBreakdown, score_candidate
 from src.graph.state import RankingState
 
 load_dotenv()
@@ -138,3 +135,120 @@ def compute_score(state: RankingState) -> dict:
         weights=state.get("weights"),
     )
     return {"score_breakdown": breakdown}
+
+
+# --------------------------------------------------------------------------
+# Step 4: natural-language explanation
+# --------------------------------------------------------------------------
+
+_EXPLANATION_PROMPT = """Tu es un(e) assistant(e) RH qui rédige des synthèses de candidature claires et professionnelles à destination de recruteurs.
+
+Voici l'analyse d'un candidat pour un poste :
+
+- Correspondance des compétences : {skills_qualifier} ({matched_count} compétence(s) correspondante(s) sur {total_count} requise(s))
+- Pertinence générale du profil par rapport à l'offre : {text_qualifier}
+- Expérience : candidat {candidate_exp}, poste requiert {required_exp} ({experience_qualifier})
+- Formation : candidat {candidate_edu}, poste requiert {required_edu} ({education_qualifier})
+
+Points forts identifiés :
+{strengths}
+
+Points faibles identifiés :
+{weaknesses}
+
+Rédige un paragraphe de synthèse de 4 à 7 phrases, en français, avec un ton professionnel et neutre, que pourrait lire un recruteur pressé pour se faire un premier avis sur ce candidat.
+
+Consignes :
+- Rédige des phrases complètes et fluides, pas de liste à puces.
+- Ne mentionne aucun score chiffré brut (le recruteur les voit déjà ailleurs dans l'interface) : reformule-les qualitativement.
+- Termine par une phrase de conclusion qui situe implicitement le candidat (à retenir en priorité / à considérer avec réserve / peu adapté au poste en l'état), sans jugement moral sur la personne.
+- Réponds uniquement avec le paragraphe, sans titre, sans introduction, sans guillemets.
+"""
+
+
+def _qualifier(score: float) -> str:
+    """Map a 0-100 subscore to a short qualitative French phrase for the prompt."""
+    if score >= 85:
+        return "excellente"
+    if score >= 70:
+        return "bonne"
+    if score >= 50:
+        return "partielle"
+    if score >= 25:
+        return "faible"
+    return "très faible"
+
+
+def _format_experience(years: int | None) -> str:
+    return f"{years} an(s)" if years is not None else "non précisée"
+
+
+def _format_education(level: tuple[int, str] | None) -> str:
+    return level[1] if level is not None else "non précisée"
+
+
+def _fallback_explanation(breakdown: ScoreBreakdown) -> str:
+    """
+    Deterministic templated paragraph built from the existing strengths /
+    weaknesses bullets, used when the LLM call or its output is unusable.
+    Not as fluent as the LLM version, but always available and still
+    readable by a recruiter.
+    """
+    if breakdown.overall_score >= 75:
+        opening = "Ce candidat présente une correspondance globale forte avec le poste."
+    elif breakdown.overall_score >= 50:
+        opening = "Ce candidat présente une correspondance globale partielle avec le poste."
+    else:
+        opening = "Ce candidat présente une correspondance globale faible avec le poste."
+
+    sentences = [opening]
+    if breakdown.strengths:
+        sentences.append("Points positifs : " + " ".join(breakdown.strengths))
+    if breakdown.weaknesses:
+        sentences.append("Points à vérifier : " + " ".join(breakdown.weaknesses))
+
+    return " ".join(sentences)
+
+
+def generate_explanation(state: RankingState) -> dict:
+    """
+    Calls Groq (Llama 3.3 70B) to turn the structured ScoreBreakdown into a
+    short, readable French paragraph. Falls back to a deterministic
+    templated paragraph (from the strengths/weaknesses bullets already
+    computed by compute_score) if the call or the response is unusable —
+    same never-hard-crash pattern as llm_extract_cv.
+    """
+    breakdown: ScoreBreakdown = state["score_breakdown"]
+
+    total_count = sum(len(v) for v in breakdown.matched_skills.values()) + sum(
+        len(v) for v in breakdown.missing_skills.values()
+    )
+    matched_count = sum(len(v) for v in breakdown.matched_skills.values())
+
+    strengths_block = "\n".join(f"- {s}" for s in breakdown.strengths) or "- Aucun point fort notable identifié."
+    weaknesses_block = "\n".join(f"- {w}" for w in breakdown.weaknesses) or "- Aucun point faible notable identifié."
+
+    prompt = _EXPLANATION_PROMPT.format(
+        skills_qualifier=_qualifier(breakdown.skills_score),
+        matched_count=matched_count,
+        total_count=total_count,
+        text_qualifier=_qualifier(breakdown.text_relevance_score),
+        candidate_exp=_format_experience(breakdown.candidate_experience_years),
+        required_exp=_format_experience(breakdown.required_experience_years),
+        experience_qualifier=_qualifier(breakdown.experience_score),
+        candidate_edu=_format_education(breakdown.candidate_education),
+        required_edu=_format_education(breakdown.required_education),
+        education_qualifier=_qualifier(breakdown.education_score),
+        strengths=strengths_block,
+        weaknesses=weaknesses_block,
+    )
+
+    try:
+        response = _llm.invoke(prompt)
+        explanation = response.content.strip().strip('"')
+        if not explanation:
+            raise ValueError("Réponse vide du modèle.")
+        return {"explanation": explanation}
+    except Exception as exc:
+        print(f"⚠️  generate_explanation failed ({exc}), falling back to templated paragraph.")
+        return {"explanation": _fallback_explanation(breakdown)}

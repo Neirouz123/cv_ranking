@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.extraction.extractor import ExtractedProfile
 from src.parsing.document_parser import DocumentParsingError, extract_text
-from src.scoring.scorer import ScoreBreakdown, ScoringWeights, score_candidate
+from src.scoring.scorer import ScoreBreakdown, ScoringWeights
+from src.graph.pipeline import graph
 
 st.set_page_config(
     page_title="Dossier RH — Classement de candidats",
@@ -142,18 +143,23 @@ if run:
         st.error("Merci d'importer au moins un CV.")
         st.stop()
 
+    # The job offer only needs the lightweight regex/TF-IDF extraction for
+    # this summary panel — no LLM call needed here, so it's done directly
+    # rather than through the graph (which recomputes it per candidate as
+    # part of each invoke, in parallel with extract_cv).
     job_profile = ExtractedProfile.from_text(job_text)
 
-    results: list[tuple[str, ScoreBreakdown]] = []
+    results: list[tuple[str, ScoreBreakdown, str]] = []
     parsing_errors: list[tuple[str, str]] = []
 
     progress = st.progress(0.0, text="Analyse des CV en cours…")
     for i, cv_file in enumerate(cv_files):
         try:
             cv_text = extract_text(cv_file, filename=cv_file.name)
-            cv_profile = ExtractedProfile.from_text(cv_text)
-            breakdown = score_candidate(cv_profile, job_profile, weights)
-            results.append((cv_file.name, breakdown))
+            graph_result = graph.invoke({"job_text": job_text, "cv_text": cv_text, "weights": weights})
+            breakdown: ScoreBreakdown = graph_result["score_breakdown"]
+            explanation: str = graph_result.get("explanation", "")
+            results.append((cv_file.name, breakdown, explanation))
         except DocumentParsingError as exc:
             parsing_errors.append((cv_file.name, str(exc)))
         progress.progress((i + 1) / len(cv_files), text=f"Analyse en cours… ({i+1}/{len(cv_files)})")
@@ -184,7 +190,7 @@ if run:
     # ---- Ranking table ----
     st.subheader("🏆 Classement des candidats")
     table_rows = []
-    for rank, (name, r) in enumerate(results, start=1):
+    for rank, (name, r, _explanation) in enumerate(results, start=1):
         table_rows.append(
             {
                 "Rang": rank,
@@ -216,7 +222,7 @@ if run:
 
     # ---- Per-candidate detail ----
     st.subheader("🗂️ Détail par candidat")
-    for rank, (name, r) in enumerate(results, start=1):
+    for rank, (name, r, explanation) in enumerate(results, start=1):
         badge_class = "rank-1" if r.overall_score >= 75 else ("rank-2" if r.overall_score >= 50 else "rank-3")
         with st.expander(f"#{rank} — {name} · score {r.overall_score}/100", expanded=(rank == 1)):
             st.markdown(
@@ -224,6 +230,11 @@ if run:
                 unsafe_allow_html=True,
             )
             st.write("")
+
+            if explanation:
+                st.markdown("**🧾 Synthèse**")
+                st.markdown(explanation)
+                st.write("")
 
             sc1, sc2, sc3, sc4 = st.columns(4)
             sc1.metric("Compétences", f"{r.skills_score}/100")

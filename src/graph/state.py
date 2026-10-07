@@ -21,3 +21,4 @@ class RankingState(TypedDict, total=False):
     job_profile: Optional[ExtractedProfile]
     cv_profile: Optional[ExtractedProfile]
     score_breakdown: Optional[ScoreBreakdown]
+    explanation: Optional[str]
