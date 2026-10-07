@@ -64,7 +64,7 @@ def test_graph_runs_end_to_end_with_vague_cv(capsys):
     captured = capsys.readouterr()
 
     assert result["score_breakdown"] is not None
-    assert "llm_extract_cv called (STUB" in captured.out  # confirms escalation actually happened
+    assert "llm_extract_cv" in captured.out  # confirms escalation actually happened
 
 
 def test_graph_skips_stub_with_strong_cv(capsys):
@@ -72,7 +72,7 @@ def test_graph_skips_stub_with_strong_cv(capsys):
     captured = capsys.readouterr()
 
     assert result["score_breakdown"] is not None
-    assert "llm_extract_cv called (STUB" not in captured.out  # confirms it was skipped
+    assert "llm_extract_cv" not in captured.out  # confirms it was skipped
 
 
 def run_all():

@@ -411,3 +411,13 @@ class ConsistencyValidator:
 
         return conflicts
 
+
+def validate_candidate_graph(payload: ExtractedGraph | CandidateGraphPayload) -> ConflictReport:
+    """
+    Validate a candidate graph and return a ConflictReport detailing
+    temporal inversions, tech release anachronisms, and duration mismatches.
+    """
+    validator = ConsistencyValidator()
+    return validator.validate_conflicts(payload)
+
+

@@ -13,9 +13,12 @@ from src.core.models import (
     ConflictType,
     ConflictSeverity,
     ValidationReport,
+    ConflictReport,
+    ExtractedGraph,
     GraphMatchBreakdown,
     CandidateRankingResult,
 )
+from src.core.validator import validate_candidate_graph
 
 __all__ = [
     "Entity",
@@ -28,7 +31,10 @@ __all__ = [
     "ConflictType",
     "ConflictSeverity",
     "ValidationReport",
+    "ConflictReport",
+    "ExtractedGraph",
     "GraphMatchBreakdown",
     "CandidateRankingResult",
+    "validate_candidate_graph",
 ]
 

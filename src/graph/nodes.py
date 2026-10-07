@@ -252,3 +252,76 @@ def generate_explanation(state: RankingState) -> dict:
     except Exception as exc:
         print(f"⚠️  generate_explanation failed ({exc}), falling back to templated paragraph.")
         return {"explanation": _fallback_explanation(breakdown)}
+
+
+# --------------------------------------------------------------------------
+# Knowledge Graph & GraphRAG Pipeline Nodes
+# --------------------------------------------------------------------------
+
+def extract_node(state: RankingState) -> dict:
+    """
+    Extract structured knowledge graph entities and relations for candidate and job description.
+    """
+    from src.pipeline.extractor import KnowledgeGraphExtractor
+
+    extractor = KnowledgeGraphExtractor(use_llm=False)
+    cand_name = state.get("candidate_name") or "Candidate"
+
+    extracted_cv = extractor.extract_candidate(state["cv_text"], candidate_id="cand_extracted", candidate_name=cand_name)
+    extracted_job = extractor.extract_job(state["job_text"], job_id="job_extracted", title="Target Job")
+
+    return {
+        "extracted_cv": extracted_cv,
+        "extracted_job": extracted_job,
+    }
+
+
+def graph_construction_node(state: RankingState) -> dict:
+    """
+    Ingest extracted knowledge into RDFLib and export to NetworkX MultiDiGraph with qualifiers.
+    """
+    from src.graph.builder import GraphBuilder
+
+    builder = GraphBuilder(include_ontology_taxonomies=True)
+    rdf_g, nx_g = builder.build_candidate_graph(state["extracted_cv"])
+
+    return {
+        "rdf_graph": rdf_g,
+        "nx_graph": nx_g,
+    }
+
+
+def validation_node(state: RankingState) -> dict:
+    """
+    Run temporal inversion, anachronism, and cumulative over-claiming contradiction audits.
+    """
+    from src.core.validator import validate_candidate_graph
+
+    conflict_report = validate_candidate_graph(state["extracted_cv"])
+    return {
+        "conflict_report": conflict_report,
+    }
+
+
+def ranking_node(state: RankingState) -> dict:
+    """
+    Compute Personalized PageRank, SKOS taxpath distance, hybrid score, and GraphRAG critique.
+    """
+    from src.graph.matching import TopologicalMatcher
+    from src.graph.graph_rag import GraphRAGSummaryEngine
+    from src.pipeline.ranker import HybridRanker
+
+    matcher = TopologicalMatcher()
+    breakdown = matcher.compute_match(state["extracted_cv"], state["extracted_job"])
+
+    ranker = HybridRanker(topological_matcher=matcher)
+    ranking_result = ranker.score_candidate(state["extracted_cv"], state["extracted_job"])
+
+    rag_engine = GraphRAGSummaryEngine(use_llm=False)
+    critique = rag_engine.generate_candidate_critique(state["extracted_cv"], state["extracted_job"])
+
+    return {
+        "graph_breakdown": breakdown,
+        "ranking_result": ranking_result,
+        "critique": critique,
+    }
