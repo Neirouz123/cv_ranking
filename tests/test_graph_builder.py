@@ -108,7 +108,7 @@ def test_rdflib_to_networkx_preserves_attributes(sample_payload):
     for u, v, data in nx_g.edges(data=True):
         if "senior_architect" in u and "pytorch" in v:
             edge_found = True
-            assert data["predicate_type"] == "USED_SKILL"
+            assert data["predicate_type"] in {"USES_SKILL", "USED_SKILL"}
             assert data["start_date"] == "2020-03-01"
             assert data["end_date"] == "2023-12-31"
             assert data["confidence"] == 0.92

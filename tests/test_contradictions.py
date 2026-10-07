@@ -213,3 +213,44 @@ def test_multiple_contradictions_accumulate_penalty(validator):
     assert report.penalty_factor >= 0.50
     assert report.is_valid is False
 
+
+def test_validate_conflicts_returns_conflict_report(validator):
+    """Verify validate_conflicts returns a ConflictReport with list[dict] conflicts and penalty_score."""
+    from src.core.models import ConflictReport, ExtractedGraph
+
+    payload = ExtractedGraph(
+        candidate_id="cand_test_cr",
+        name="Test Candidate",
+        entities=[
+            Entity(id="cand_test_cr", name="Test Candidate", category=EntityCategory.CANDIDATE),
+            Entity(id="role:analyst", name="Analyst", category=EntityCategory.ROLE),
+            Entity(id="skill:fastapi", name="FastAPI", category=EntityCategory.SKILL),
+        ],
+        relations=[
+            Relation(
+                subject_id="cand_test_cr",
+                predicate=PredicateType.HELD_ROLE,
+                object_id="role:analyst",
+                start_date="2024-01-01",
+                end_date="2021-01-01",  # Temporal Inversion
+            ),
+            Relation(
+                subject_id="role:analyst",
+                predicate=PredicateType.USES_SKILL,
+                object_id="skill:fastapi",
+                start_date="2014-01-01",
+                end_date="2016-01-01",  # Anachronism (FastAPI released 2018)
+            ),
+        ],
+    )
+
+    report = validator.validate_conflicts(payload)
+    assert isinstance(report, ConflictReport)
+    assert isinstance(report.conflicts, list)
+    assert len(report.conflicts) >= 2
+    assert isinstance(report.conflicts[0], dict)
+    assert "conflict_type" in report.conflicts[0]
+    assert report.penalty_score > 0.0
+    assert report.penalty_factor == report.penalty_score
+
+

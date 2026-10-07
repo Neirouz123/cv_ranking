@@ -21,9 +21,11 @@ from dateutil import parser as date_parser
 from src.core.models import (
     CandidateGraphPayload,
     Conflict,
+    ConflictReport,
     ConflictSeverity,
     ConflictType,
     EntityCategory,
+    ExtractedGraph,
     PredicateType,
     ValidationReport,
 )
@@ -195,8 +197,32 @@ class ConsistencyValidator:
         return ValidationReport(
             conflicts=conflicts,
             penalty_factor=penalty_factor,
+            penalty_score=penalty_factor,
             is_valid=is_valid,
             summary=summary,
+        )
+
+    def validate_conflicts(self, payload: ExtractedGraph | CandidateGraphPayload) -> ConflictReport:
+        """
+        Validate candidate payload and return a ConflictReport(conflicts: list[dict], penalty_score: float).
+        """
+        report = self.validate(payload)
+        conf_dicts = [
+            {
+                "conflict_type": c.conflict_type.value,
+                "severity": c.severity.value,
+                "message": c.message,
+                "entity_ids": c.entity_ids,
+                "penalty_weight": c.penalty_weight,
+                "details": c.details,
+            }
+            for c in report.conflicts
+        ]
+        return ConflictReport(
+            conflicts=conf_dicts,
+            penalty_score=report.penalty_factor,
+            is_valid=report.is_valid,
+            summary=report.summary,
         )
 
     def _check_temporal_inversions(self, payload: CandidateGraphPayload) -> list[Conflict]:
@@ -240,7 +266,7 @@ class ConsistencyValidator:
         # Find all relations mentioning a skill
         for rel in payload.relations:
             skill_id = None
-            if rel.predicate == PredicateType.USED_SKILL:
+            if rel.predicate in {PredicateType.USED_SKILL, PredicateType.USES_SKILL}:
                 skill_id = normalize_skill_name(rel.object_id)
             elif rel.subject_id.startswith("skill:"):
                 skill_id = normalize_skill_name(rel.subject_id)
@@ -318,7 +344,7 @@ class ConsistencyValidator:
 
             for rel in payload.relations:
                 rel_skill = normalize_skill_name(rel.object_id)
-                if rel.predicate == PredicateType.USED_SKILL and rel_skill == norm_id:
+                if rel.predicate in {PredicateType.USED_SKILL, PredicateType.USES_SKILL} and rel_skill == norm_id:
                     # 1. Interval directly on the USED_SKILL relation
                     r_start = parse_fuzzy_date(rel.start_date, is_end_date=False)
                     r_end = parse_fuzzy_date(rel.end_date, is_end_date=True) or (CURRENT_DATE if r_start else None)

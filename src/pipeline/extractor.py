@@ -20,6 +20,7 @@ from src.core.models import (
     CandidateGraphPayload,
     Entity,
     EntityCategory,
+    ExtractedGraph,
     JobDescriptionGraphPayload,
     PredicateType,
     Relation,
@@ -41,11 +42,12 @@ CRITICAL INSTRUCTIONS:
    - SKILL: Technical skills, frameworks, tools, libraries (e.g., "PyTorch", "FastAPI")
    - DEGREE: Academic qualifications (e.g., "Master of Science in Computer Science")
    - PROJECT: Specific initiatives or projects delivered
-2. Extract RELATIONS with explicit temporal qualifiers and dependencies:
-   - Relate skills directly to the specific ROLE or PROJECT during which they were used (e.g. role -> USED_SKILL -> skill), not just floating.
+2. Extract RELATIONS with explicit temporal qualifiers, confidence, and source snippets:
+   - Relate skills directly to the specific ROLE or PROJECT during which they were used (e.g. role -> USES_SKILL -> skill).
    - Relate candidate to roles (candidate -> HELD_ROLE -> role), companies (role -> WORKED_AT -> company), and degrees (candidate -> EARNED_DEGREE -> degree).
    - Extract exact start_date and end_date for each tenure/project (e.g., "2020-01", "2023-05", "2019", "present").
    - Extract claimed_years if explicitly mentioned (e.g., "5 years of Python").
+   - Extract source_snippet containing the exact context from the text.
 3. DO NOT hallucinate any entity or claim not explicitly supported by the text.
 
 JSON Output Schema:
@@ -54,7 +56,7 @@ JSON Output Schema:
   "entities": [
     {{
       "id": "<category_prefix:name>",
-      "label": "<display name>",
+      "name": "<display name>",
       "category": "CANDIDATE" | "ROLE" | "SKILL" | "DEGREE" | "COMPANY" | "PROJECT",
       "claimed_years": <number or null>
     }}
@@ -62,11 +64,12 @@ JSON Output Schema:
   "relations": [
     {{
       "subject_id": "<entity_id>",
-      "predicate": "HELD_ROLE" | "WORKED_AT" | "USED_SKILL" | "DELIVERED_PROJECT" | "EARNED_DEGREE",
+      "predicate": "HELD_ROLE" | "WORKED_AT" | "USES_SKILL" | "DELIVERED_PROJECT" | "EARNED_DEGREE",
       "object_id": "<entity_id>",
       "start_date": "<YYYY-MM or YYYY or present or null>",
       "end_date": "<YYYY-MM or YYYY or present or null>",
-      "confidence": <float between 0.0 and 1.0>
+      "confidence": <float between 0.0 and 1.0>,
+      "source_snippet": "<verbatim excerpt from text>"
     }}
   ]
 }}
@@ -177,7 +180,7 @@ class KnowledgeGraphExtractor:
             if pred_str in PredicateType.__members__:
                 pred = PredicateType[pred_str]
             else:
-                pred = PredicateType.USED_SKILL
+                pred = PredicateType.USES_SKILL
             relations.append(
                 Relation(
                     subject_id=r["subject_id"],
@@ -186,6 +189,7 @@ class KnowledgeGraphExtractor:
                     start_date=r.get("start_date"),
                     end_date=r.get("end_date"),
                     confidence=float(r.get("confidence", 1.0)),
+                    source_snippet=r.get("source_snippet", ""),
                 )
             )
 
@@ -194,10 +198,10 @@ class KnowledgeGraphExtractor:
         if not cand_found:
             entities.insert(
                 0,
-                Entity(id=candidate_id, label=name, category=EntityCategory.CANDIDATE),
+                Entity(id=candidate_id, name=name, label=name, category=EntityCategory.CANDIDATE),
             )
 
-        return CandidateGraphPayload(
+        return ExtractedGraph(
             candidate_id=candidate_id,
             name=name,
             entities=entities,
@@ -347,16 +351,17 @@ class KnowledgeGraphExtractor:
                 for s_id, s_label in block_skills:
                     if not any(e.id == s_id for e in entities):
                         entities.append(
-                            Entity(id=s_id, label=s_label, category=EntityCategory.SKILL)
+                            Entity(id=s_id, name=s_label, label=s_label, category=EntityCategory.SKILL)
                         )
                     relations.append(
                         Relation(
                             subject_id=role_id,
-                            predicate=PredicateType.USED_SKILL,
+                            predicate=PredicateType.USES_SKILL,
                             object_id=s_id,
                             start_date=block.get("start_date"),
                             end_date=block.get("end_date"),
                             confidence=0.90,
+                            source_snippet=block.get("text", ""),
                         )
                     )
 
@@ -364,17 +369,17 @@ class KnowledgeGraphExtractor:
             for s_id, s_label in found_skills:
                 if not any(e.id == s_id for e in entities):
                     entities.append(
-                        Entity(id=s_id, label=s_label, category=EntityCategory.SKILL)
+                        Entity(id=s_id, name=s_label, label=s_label, category=EntityCategory.SKILL)
                     )
                 if not any(r.object_id == s_id for r in relations):
-                    # Attach to the most recent role
                     first_role_id = f"role:{candidate_id}_0"
                     relations.append(
                         Relation(
                             subject_id=first_role_id,
-                            predicate=PredicateType.USED_SKILL,
+                            predicate=PredicateType.USES_SKILL,
                             object_id=s_id,
                             confidence=0.75,
+                            source_snippet="",
                         )
                     )
 
@@ -382,7 +387,7 @@ class KnowledgeGraphExtractor:
         degree_blocks = self._detect_degrees(cv_text)
         for d_id, d_label, d_date in degree_blocks:
             entities.append(
-                Entity(id=d_id, label=d_label, category=EntityCategory.DEGREE)
+                Entity(id=d_id, name=d_label, label=d_label, category=EntityCategory.DEGREE)
             )
             relations.append(
                 Relation(
@@ -391,10 +396,11 @@ class KnowledgeGraphExtractor:
                     object_id=d_id,
                     end_date=d_date,
                     confidence=0.95,
+                    source_snippet=d_label,
                 )
             )
 
-        return CandidateGraphPayload(
+        return ExtractedGraph(
             candidate_id=candidate_id,
             name=name,
             entities=entities,

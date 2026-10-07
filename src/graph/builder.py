@@ -2,8 +2,8 @@
 src/graph/builder.py
 --------------------
 Graph ingestion and bi-directional conversion between RDFLib semantic graphs
-and NetworkX directed multigraphs (nx.MultiDiGraph), preserving edge attributes
-(dates, confidence, predicate types).
+and NetworkX directed multigraphs (nx.MultiDiGraph).
+Preserves edge qualifiers, confidence scores, timestamps, and reified statements.
 """
 
 from __future__ import annotations
@@ -19,25 +19,28 @@ from src.core.models import (
     CandidateGraphPayload,
     Entity,
     EntityCategory,
+    ExtractedGraph,
     JobDescriptionGraphPayload,
     PredicateType,
     Relation,
 )
-from src.core.ontology import CV, build_skos_ontology, normalize_skill_name
+from src.core.ontology import CV, SKILL, build_skos_ontology, normalize_skill_name
 
 # Mapping from PredicateType enum to RDFLib Property
 PREDICATE_TO_RDF: dict[PredicateType, URIRef] = {
     PredicateType.HELD_ROLE: CV.heldRole,
     PredicateType.WORKED_AT: CV.workedAt,
-    PredicateType.USED_SKILL: CV.usedSkill,
+    PredicateType.USES_SKILL: CV.usesSkill,
+    PredicateType.USED_SKILL: CV.usesSkill,
     PredicateType.DELIVERED_PROJECT: CV.deliveredProject,
     PredicateType.EARNED_DEGREE: CV.earnedDegree,
 }
 
 RDF_TO_PREDICATE: dict[URIRef, PredicateType] = {
     CV.heldRole: PredicateType.HELD_ROLE,
+    CV.hasExperience: PredicateType.HELD_ROLE,
     CV.workedAt: PredicateType.WORKED_AT,
-    CV.usedSkill: PredicateType.USED_SKILL,
+    CV.usesSkill: PredicateType.USES_SKILL,
     CV.deliveredProject: PredicateType.DELIVERED_PROJECT,
     CV.earnedDegree: PredicateType.EARNED_DEGREE,
 }
@@ -53,18 +56,11 @@ CATEGORY_TO_RDF_CLASS: dict[EntityCategory, URIRef] = {
 
 
 def entity_id_to_uri(entity_id: str) -> URIRef:
-    """Deterministic URI creation from an entity identifier."""
-    clean_id = entity_id.strip().lower().replace(":", "_").replace(" ", "_")
-    return CV[clean_id]
-
-
-def uri_to_entity_id(uri: URIRef) -> str:
-    """Recover entity ID from an RDF URI."""
-    suffix = str(uri).split("#")[-1]
-    if "_" in suffix:
-        prefix, *rest = suffix.split("_")
-        return f"{prefix}:{'_'.join(rest)}"
-    return suffix
+    """Deterministic URI creation from an entity identifier using cv or skill namespaces."""
+    clean_id = entity_id.strip().lower()
+    if clean_id.startswith("skill:"):
+        return SKILL[clean_id[6:]]
+    return CV[clean_id.replace(":", "_").replace(" ", "_")]
 
 
 class GraphBuilder:
@@ -78,17 +74,19 @@ class GraphBuilder:
 
     def payload_to_rdflib(
         self,
-        payload: CandidateGraphPayload | JobDescriptionGraphPayload,
+        payload: ExtractedGraph | CandidateGraphPayload | JobDescriptionGraphPayload,
         base_graph: Optional[Graph] = None,
     ) -> Graph:
         """
         Ingest an extracted candidate or job payload into an RDFLib graph.
-        Preserves temporal qualifiers and confidence via RDF statement reification.
+        Preserves temporal qualifiers, source snippet, and confidence via statement reification.
         """
         g = base_graph if base_graph is not None else (build_skos_ontology() if self.include_ontology else Graph())
         g.bind("cv", CV)
+        g.bind("skill", SKILL)
         g.bind("skos", SKOS)
         g.bind("rdf", RDF)
+        g.bind("rdfs", RDFS)
 
         # 1. Ingest Entities
         for entity in payload.entities:
@@ -96,22 +94,25 @@ class GraphBuilder:
             rdf_class = CATEGORY_TO_RDF_CLASS.get(entity.category, CV.Entity)
 
             g.add((e_uri, RDF.type, rdf_class))
-            g.add((e_uri, RDFS.label, Literal(entity.label, datatype=XSD.string)))
+            name_val = entity.name or entity.label or entity.id
+            g.add((e_uri, RDFS.label, Literal(name_val, datatype=XSD.string)))
             g.add((e_uri, CV.entityId, Literal(entity.id, datatype=XSD.string)))
             g.add((e_uri, CV.category, Literal(entity.category.value, datatype=XSD.string)))
 
             if entity.claimed_years is not None:
                 g.add((e_uri, CV.claimedYears, Literal(float(entity.claimed_years), datatype=XSD.float)))
 
-        # If payload is CandidateGraphPayload, also assert candidate node if not already present
-        if isinstance(payload, CandidateGraphPayload):
-            c_uri = entity_id_to_uri(payload.candidate_id)
+        # If payload is candidate payload, ensure candidate node exists
+        cand_id = getattr(payload, "candidate_id", None)
+        if cand_id:
+            c_uri = entity_id_to_uri(cand_id)
             g.add((c_uri, RDF.type, CV.Candidate))
-            g.add((c_uri, RDFS.label, Literal(payload.name, datatype=XSD.string)))
-            g.add((c_uri, CV.entityId, Literal(payload.candidate_id, datatype=XSD.string)))
+            c_name = getattr(payload, "name", cand_id) or cand_id
+            g.add((c_uri, RDFS.label, Literal(c_name, datatype=XSD.string)))
+            g.add((c_uri, CV.entityId, Literal(cand_id, datatype=XSD.string)))
 
         # 2. Ingest Relations
-        for idx, rel in enumerate(payload.relations):
+        for rel in payload.relations:
             s_uri = entity_id_to_uri(rel.subject_id)
             o_uri = entity_id_to_uri(rel.object_id)
             p_uri = PREDICATE_TO_RDF.get(rel.predicate, CV[rel.predicate.value])
@@ -119,7 +120,15 @@ class GraphBuilder:
             # Direct triple
             g.add((s_uri, p_uri, o_uri))
 
-            # Reified Statement node to preserve edge attributes (dates, confidence)
+            # If HELD_ROLE, also assert cv:hasExperience for SPARQL role traversals
+            if rel.predicate == PredicateType.HELD_ROLE:
+                g.add((s_uri, CV.hasExperience, o_uri))
+
+            # If USES_SKILL / USED_SKILL, assert cv:usesSkill
+            if rel.predicate in {PredicateType.USES_SKILL, PredicateType.USED_SKILL}:
+                g.add((s_uri, CV.usesSkill, o_uri))
+
+            # Reified Statement node for qualifiers (confidence, dates, snippet)
             stmt_id = f"stmt_{uuid.uuid4().hex[:8]}"
             stmt_uri = CV[stmt_id]
             g.add((stmt_uri, RDF.type, RDF.Statement))
@@ -131,6 +140,8 @@ class GraphBuilder:
             g.add((stmt_uri, CV.predicateType, Literal(rel.predicate.value, datatype=XSD.string)))
             g.add((stmt_uri, CV.confidence, Literal(float(rel.confidence), datatype=XSD.float)))
 
+            if rel.source_snippet:
+                g.add((stmt_uri, CV.sourceSnippet, Literal(rel.source_snippet, datatype=XSD.string)))
             if rel.start_date:
                 g.add((stmt_uri, CV.startDate, Literal(rel.start_date, datatype=XSD.string)))
             if rel.end_date:
@@ -141,13 +152,16 @@ class GraphBuilder:
     def rdflib_to_networkx(self, g: Graph) -> nx.MultiDiGraph:
         """
         Convert an RDFLib graph into a directed NetworkX multigraph (nx.MultiDiGraph).
-        Preserves node attributes and all edge attributes (dates, confidence, predicate type).
+        Preserves node attributes, edge predicates, timestamps, and confidence scores.
         """
         nx_graph = nx.MultiDiGraph()
 
         def _get_node_id(node_uri: URIRef) -> str:
             for eid in g.objects(node_uri, CV.entityId):
                 return str(eid)
+            # Check skill namespace
+            if str(node_uri).startswith(str(SKILL)):
+                return f"skill:{str(node_uri).split('#')[-1]}"
             suffix = str(node_uri).split("#")[-1]
             return suffix
 
@@ -185,12 +199,13 @@ class GraphBuilder:
                     node_id,
                     id=node_id,
                     label=label,
+                    name=label,
                     category=category or "UNKNOWN",
                     uri=str(s),
                     claimed_years=claimed_years,
                 )
 
-        # 2. Extract edge reifications (statements with attributes)
+        # 2. Extract edge reifications (statements with qualifiers)
         reified_edges: dict[Any, dict[str, Any]] = {}
         for stmt in g.subjects(RDF.type, RDF.Statement):
             s_val = next(g.objects(stmt, RDF.subject), None)
@@ -205,6 +220,7 @@ class GraphBuilder:
                 start_date = None
                 end_date = None
                 confidence = 1.0
+                source_snippet = ""
                 pred_type = p_name
 
                 for d in g.objects(stmt, CV.startDate):
@@ -216,6 +232,8 @@ class GraphBuilder:
                         confidence = float(c)
                     except (ValueError, TypeError):
                         pass
+                for snip in g.objects(stmt, CV.sourceSnippet):
+                    source_snippet = str(snip)
                 for pt in g.objects(stmt, CV.predicateType):
                     pred_type = str(pt)
 
@@ -223,9 +241,9 @@ class GraphBuilder:
                     "start_date": start_date,
                     "end_date": end_date,
                     "confidence": confidence,
+                    "source_snippet": source_snippet,
                     "predicate_type": pred_type,
                 }
-                # Store multiple index keys for resilient matching
                 reified_edges[(s_id, o_id, pred_type.upper())] = edge_info
                 reified_edges[(s_id, o_id, p_name)] = edge_info
                 reified_edges[(s_id, o_id, p_name.lower())] = edge_info
@@ -244,7 +262,6 @@ class GraphBuilder:
             o_id = _get_node_id(o)
             p_name = str(p).split("#")[-1]
 
-            # Ensure nodes exist
             if s_id not in nx_graph:
                 nx_graph.add_node(s_id, id=s_id, label=s_id, category="UNKNOWN", uri=str(s))
             if o_id not in nx_graph:
@@ -257,7 +274,7 @@ class GraphBuilder:
                 or {}
             )
 
-            ptype = reified.get("predicate_type") or RDF_TO_PREDICATE.get(p, PredicateType.USED_SKILL).value
+            ptype = reified.get("predicate_type") or RDF_TO_PREDICATE.get(p, PredicateType.USES_SKILL).value
 
             nx_graph.add_edge(
                 s_id,
@@ -267,6 +284,7 @@ class GraphBuilder:
                 start_date=reified.get("start_date"),
                 end_date=reified.get("end_date"),
                 confidence=reified.get("confidence", 1.0),
+                source_snippet=reified.get("source_snippet", ""),
                 weight=float(reified.get("confidence", 1.0)),
             )
 
@@ -275,10 +293,10 @@ class GraphBuilder:
     def networkx_to_rdflib(self, nx_graph: nx.MultiDiGraph) -> Graph:
         """
         Convert a NetworkX MultiDiGraph back into an RDFLib Graph.
-        Re-constructs statements, types, and edge attributes.
         """
         g = Graph()
         g.bind("cv", CV)
+        g.bind("skill", SKILL)
         g.bind("rdf", RDF)
         g.bind("rdfs", RDFS)
 
@@ -303,11 +321,11 @@ class GraphBuilder:
             u_uri = entity_id_to_uri(u)
             v_uri = entity_id_to_uri(v)
 
-            pred_str = data.get("predicate") or "usedSkill"
+            pred_str = data.get("predicate") or "usesSkill"
             pred_uri = CV[pred_str]
             g.add((u_uri, pred_uri, v_uri))
 
-            # Reified statement for edge attributes
+            # Reified statement
             stmt_id = f"stmt_{uuid.uuid4().hex[:8]}"
             stmt_uri = CV[stmt_id]
             g.add((stmt_uri, RDF.type, RDF.Statement))
@@ -321,6 +339,8 @@ class GraphBuilder:
             conf = float(data.get("confidence", 1.0))
             g.add((stmt_uri, CV.confidence, Literal(conf, datatype=XSD.float)))
 
+            if data.get("source_snippet"):
+                g.add((stmt_uri, CV.sourceSnippet, Literal(data["source_snippet"], datatype=XSD.string)))
             if data.get("start_date"):
                 g.add((stmt_uri, CV.startDate, Literal(data["start_date"], datatype=XSD.string)))
             if data.get("end_date"):
@@ -329,7 +349,7 @@ class GraphBuilder:
         return g
 
     def build_candidate_graph(
-        self, payload: CandidateGraphPayload
+        self, payload: ExtractedGraph | CandidateGraphPayload
     ) -> tuple[Graph, nx.MultiDiGraph]:
         """Convenience method returning both RDFLib and NetworkX graph representations."""
         rdf_g = self.payload_to_rdflib(payload)

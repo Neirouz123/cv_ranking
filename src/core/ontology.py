@@ -2,7 +2,7 @@
 src/core/ontology.py
 --------------------
 Ontology definitions using RDFLib and SKOS for CV and Job Description knowledge modeling.
-Provides hierarchical taxonomies for technical skills, degrees, and roles.
+Standardizes prefixes (cv, skill, skos), RDF classes, predicates, and hierarchical taxonomies.
 """
 
 from __future__ import annotations
@@ -13,11 +13,12 @@ import networkx as nx
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS, XSD
 
-# Primary CV recruitment namespace
+# Standardized namespaces
 CV = Namespace("http://recruitment.org/cv#")
+SKILL = Namespace("http://recruitment.org/skill#")
+# SKOS is standard from rdflib.namespace
 
-# Predefined Skill Hierarchy: (Child, Broader_Parent)
-# Format: (child_id, broader_parent_id, canonical_label)
+# Predefined Skill Hierarchy: (child_id, broader_parent_id, canonical_label)
 SKOS_SKILL_RELATIONS: list[tuple[str, str, str]] = [
     # Top-level domains
     ("domain:ai_data", "domain:tech", "AI & Data Science"),
@@ -101,7 +102,7 @@ SKOS_SKILL_RELATIONS: list[tuple[str, str, str]] = [
     ("skill:snowflake", "skill:dataengineering", "Snowflake"),
 ]
 
-# Alias and synonym normalizer mapping
+# Alias and synonym dictionary
 SYNONYM_MAP: dict[str, str] = {
     "pytorch": "skill:pytorch",
     "torch": "skill:pytorch",
@@ -199,13 +200,22 @@ def normalize_skill_name(name: str) -> str:
     return f"skill:{compact}"
 
 
+def skill_id_to_uri(skill_id: str) -> URIRef:
+    """Convert skill ID to SKILL or CV namespace URI."""
+    norm = normalize_skill_name(skill_id)
+    clean = norm.replace("skill:", "").replace("domain:", "")
+    return SKILL[clean]
+
+
 def build_skos_ontology() -> Graph:
     """
-    Build an RDFLib Graph defining the recruitment ontology,
+    Build an RDFLib Graph defining recruitment ontologies,
     SKOS concepts, broader/narrower hierarchies, and classes.
+    Standardizes prefixes cv:, skill:, skos:.
     """
     g = Graph()
     g.bind("cv", CV)
+    g.bind("skill", SKILL)
     g.bind("skos", SKOS)
     g.bind("rdf", RDF)
     g.bind("rdfs", RDFS)
@@ -220,28 +230,47 @@ def build_skos_ontology() -> Graph:
     g.add((CV.Degree, RDFS.subClassOf, CV.Entity))
     g.add((CV.Project, RDFS.subClassOf, CV.Entity))
 
-    # Core predicates
-    for pred in [CV.heldRole, CV.workedAt, CV.usedSkill, CV.deliveredProject, CV.earnedDegree]:
+    # Core properties
+    for pred in [
+        CV.hasExperience,
+        CV.usesSkill,
+        CV.heldRole,
+        CV.workedAt,
+        CV.earnedDegree,
+        CV.deliveredProject,
+        CV.confidence,
+        CV.sourceSnippet,
+        CV.startDate,
+        CV.endDate,
+    ]:
         g.add((pred, RDF.type, RDF.Property))
 
-    # Scheme
+    # Skill scheme
     scheme = CV.SkillTaxonomyScheme
     g.add((scheme, RDF.type, SKOS.ConceptScheme))
     g.add((scheme, RDFS.label, Literal("Recruitment Technical Skill Taxonomy", datatype=XSD.string)))
 
-    # Populate SKOS hierarchy
+    # Populate SKOS hierarchy in SKILL and CV namespaces
     for child_id, broader_id, label in SKOS_SKILL_RELATIONS:
-        child_uri = CV[child_id.replace(":", "_")]
-        broader_uri = CV[broader_id.replace(":", "_")]
+        child_clean = child_id.replace("skill:", "").replace("domain:", "")
+        broader_clean = broader_id.replace("skill:", "").replace("domain:", "")
 
-        g.add((child_uri, RDF.type, SKOS.Concept))
-        g.add((child_uri, RDF.type, CV.Skill))
-        g.add((child_uri, SKOS.inScheme, scheme))
-        g.add((child_uri, SKOS.prefLabel, Literal(label, datatype=XSD.string)))
+        child_skill_uri = SKILL[child_clean]
+        broader_skill_uri = SKILL[broader_clean]
 
-        g.add((child_uri, SKOS.broader, broader_uri))
-        g.add((broader_uri, SKOS.narrower, child_uri))
-        g.add((child_uri, RDFS.subClassOf, broader_uri))
+        child_cv_uri = CV[child_id.replace(":", "_")]
+        broader_cv_uri = CV[broader_id.replace(":", "_")]
+
+        for c_uri, b_uri in [(child_skill_uri, broader_skill_uri), (child_cv_uri, broader_cv_uri)]:
+            g.add((c_uri, RDF.type, SKOS.Concept))
+            g.add((c_uri, RDF.type, CV.Skill))
+            g.add((c_uri, SKOS.inScheme, scheme))
+            g.add((c_uri, SKOS.prefLabel, Literal(label, datatype=XSD.string)))
+            g.add((c_uri, RDFS.label, Literal(label, datatype=XSD.string)))
+
+            g.add((c_uri, SKOS.broader, b_uri))
+            g.add((b_uri, SKOS.narrower, c_uri))
+            g.add((c_uri, RDFS.subClassOf, b_uri))
 
     return g
 
@@ -267,7 +296,6 @@ def get_taxonomy_networkx(g: Optional[Graph] = None) -> nx.Graph:
         graph.add_edge(c_norm, b_norm, weight=1.0)
 
     if g is not None:
-        # Also parse any custom triples in g
         for s, p, o in g.triples((None, SKOS.broader, None)):
             s_name = str(s).split("#")[-1].replace("_", ":")
             o_name = str(o).split("#")[-1].replace("_", ":")
@@ -285,11 +313,7 @@ def calculate_taxonomic_distance(
     taxonomy_graph: Optional[nx.Graph] = None
 ) -> float:
     """
-    Calculate the shortest path distance between two skills in the SKOS taxonomy.
-    Returns:
-        0.0 if identical
-        integer distance >= 1 if connected
-        float('inf') if disconnected or not found in taxonomy.
+    Calculate shortest path distance between two skills in the SKOS taxonomy.
     """
     norm_a = normalize_skill_name(skill_a)
     norm_b = normalize_skill_name(skill_b)
@@ -315,12 +339,7 @@ def taxonomic_similarity(
     taxonomy_graph: Optional[nx.Graph] = None
 ) -> float:
     """
-    Convert topological taxpath shortest-path distance to a similarity score [0.0, 1.0].
-    Direct match: 1.0
-    1 hop (e.g. PyTorch -> DeepLearning): 0.75
-    2 hops (e.g. PyTorch -> TensorFlow via DeepLearning): 0.50
-    3 hops: 0.35
-    > max_distance or disconnected: 0.0
+    Convert shortest-path distance to a similarity score [0.0, 1.0].
     """
     dist = calculate_taxonomic_distance(skill_a, skill_b, taxonomy_graph)
     if dist == 0.0:

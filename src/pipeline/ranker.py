@@ -71,6 +71,22 @@ def compute_vector_similarity(text_a: Optional[str], text_b: Optional[str]) -> f
     return min(1.0, max(0.0, sim))
 
 
+def compute_final_rank(
+    vector_score: float,
+    graph_score: float,
+    penalty_score: float,
+    weights: tuple[float, float, float] = (0.4, 0.5, 0.1),
+) -> float:
+    """
+    Compute hybrid final ranking score:
+        FinalScore = weights[0] * vector_score + weights[1] * graph_score - weights[2] * penalty_score
+    Returns a float in [0.0, 1.0].
+    """
+    w_vec, w_graph, w_pen = weights
+    raw_score = w_vec * vector_score + w_graph * graph_score - w_pen * penalty_score
+    return float(min(1.0, max(0.0, raw_score)))
+
+
 class HybridRanker:
     """
     Hybrid scoring and ranking engine combining textual vector similarity,

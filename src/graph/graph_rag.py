@@ -144,6 +144,36 @@ class GraphRAGSummaryEngine:
             return f"Experience Cluster ({roles[0]})"
         return f"Specialization Module {idx + 1}"
 
+    def generate_community_prompts(
+        self, candidate_payload: CandidateGraphPayload
+    ) -> list[dict[str, str]]:
+        """
+        Generate prompt inputs per community cluster (e.g. 'Cluster 1: Embedded IoT', 'Cluster 2: Machine Learning')
+        to feed an LLM synthesis step explaining candidate strengths and gaps.
+        """
+        clusters = self.detect_communities(candidate_payload)
+        prompts: list[dict[str, str]] = []
+
+        for c in clusters:
+            skills_str = ", ".join(c["skills"]) if c["skills"] else "None specified"
+            roles_str = ", ".join(c["roles"]) if c["roles"] else "General experience"
+            companies_str = ", ".join(c["companies"]) if c["companies"] else "Unspecified"
+
+            prompt_text = (
+                f"Cluster {c['cluster_id']}: {c['title']}\n"
+                f"- Extracted Tools & Skills: {skills_str}\n"
+                f"- Associated Professional Roles: {roles_str}\n"
+                f"- Organizations: {companies_str}\n"
+                f"Synthesize the candidate's competence, strengths, and technical gaps in this domain."
+            )
+            prompts.append({
+                "cluster_id": str(c["cluster_id"]),
+                "cluster_title": f"Cluster {c['cluster_id']}: {c['title']}",
+                "prompt_input": prompt_text,
+            })
+
+        return prompts
+
     def generate_candidate_critique(
         self,
         candidate_payload: CandidateGraphPayload,
