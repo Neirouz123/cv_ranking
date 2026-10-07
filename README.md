@@ -1,140 +1,210 @@
-# Dossier RH — Classement de candidats (CV vs Offre)
+# Dossier RH — Knowledge Graph & GraphRAG CV Ranking Engine
 
-Application Streamlit qui compare une offre d'emploi à un ou plusieurs CV
-(PDF, DOCX ou texte) et calcule un **score de correspondance objectif et
-explicable** pour chaque candidat, via un algorithme de pondération — sans
-appel à un modèle de langage : chaque score est traçable jusqu'à une règle
-précise (compétence détectée, seuil d'expérience, niveau de diplôme...).
+Système d'évaluation et de classement de candidats fondé sur un **graphe de connaissances ontologique (RDFLib & SKOS)**, une **analyse topologique avancée (NetworkX, Personalized PageRank, distances taxopathiques)**, une **détection automatisée des contradictions et incohérences temporelles**, et une **synthèse qualitative GraphRAG par communautés de Louvain**.
 
-## Architecture
+---
 
-```
-cv-ranker/
-├── app.py                          # Interface Streamlit (point d'entrée)
-├── requirements.txt
-├── .streamlit/config.toml          # Thème
-├── src/
-│   ├── parsing/
-│   │   └── document_parser.py      # Extraction de texte : PDF (pdfplumber),
-│   │                                #   DOCX (python-docx), TXT
-│   ├── extraction/
-│   │   ├── skills_data.py          # Taxonomie de compétences FR/EN (éditable)
-│   │   └── extractor.py            # Détection de compétences, années
-│   │                                #   d'expérience, niveau de formation
-│   └── scoring/
-│       └── scorer.py               # Algorithme de scoring pondéré
-└── tests/                          # (voir section Tests)
-```
+## 1. Vue d'ensemble de l'architecture
 
-### Flux de traitement
+Le moteur dépasse les limites des approches purement vectorielles ou par mots-clés en intégrant une modélisation sémantique stricte et une validation d'intégrité avant calcul du score.
 
 ```
-Offre d'emploi (texte / PDF / DOCX)          CV #1, CV #2, … (PDF / DOCX / TXT)
-        │                                              │
-        ▼                                              ▼
-  document_parser.extract_text()             document_parser.extract_text()
-        │                                              │
-        ▼                                              ▼
-  extractor.ExtractedProfile.from_text()  ──►  extractor.ExtractedProfile.from_text()
-        │  (compétences, expérience,                    │
-        │   niveau de formation)                        │
-        └──────────────────┬─────────────────────────────┘
-                            ▼
-                 scorer.score_candidate(cv, offre, poids)
-                            │
-                            ▼
-        ScoreBreakdown : score global + 4 sous-scores
-        + compétences correspondantes / manquantes
-        + points forts / points faibles générés par règles
-                            │
-                            ▼
-              app.py : tableau de classement + détail par candidat
+src/
+├── core/
+│   ├── ontology.py          # Ontologie RDFLib (namespace CV), taxonomies SKOS et distances taxopathiques
+│   ├── models.py            # Schémas Pydantic v2 stricts : Entity, Relation, Payloads, Conflict, ValidationReport
+│   └── validator.py         # Moteur de validation : inversions temporelles, anachronismes, sur-déclarations
+├── graph/
+│   ├── builder.py           # Ingestion triplets RDFLib & NetworkX (MultiDiGraph) bidirectionnelle
+│   ├── matching.py          # Scoring topologique : Personalized PageRank (PPR), similarité SKOS, Jaccard
+│   └── graph_rag.py         # Clustering par communautés Louvain & génération de critiques explicables
+├── pipeline/
+│   ├── extractor.py         # Extraction de relations & qualificatifs temporels (LLM + parser déterministe)
+│   └── ranker.py            # Scoring hybride multi-facteurs (Vecteurs + Graphe - Pénalités)
+├── extraction/              # Extracteur historique regex (rétro-compatibilité)
+├── parsing/                 # Parsing de documents PDF (pdfplumber), DOCX (python-docx), TXT
+└── scoring/                 # Moteur de scoring de base
+tests/
+├── test_contradictions.py   # Tests d'inversions, anachronismes et sur-déclarations
+├── test_graph_builder.py    # Tests d'ingestion RDFLib, conversion NetworkX et réification d'arêtes
+└── test_ranking.py          # Tests de PPR, crédit partiel taxonomique, ranker hybride et GraphRAG
 ```
 
-## Algorithme de scoring
+---
 
-Le score global (0–100) combine quatre composantes indépendantes,
-pondérables depuis la barre latérale de l'application :
+## 2. Pipeline de traitement & Fonctionnalités clés
 
-| Composante              | Poids par défaut | Calcul                                                              |
-|--------------------------|:---:|-----------------------------------------------------------------------------|
-| **Compétences**          | 50 % | % des compétences requises par l'offre retrouvées dans le CV (taxonomie de ~120 compétences FR/EN dans `skills_data.py`) |
-| **Pertinence textuelle** | 20 % | Similarité cosinus TF-IDF entre le texte complet du CV et de l'offre (capte le vocabulaire métier hors taxonomie) |
-| **Expérience**           | 15 % | Années d'expérience extraites du CV vs. seuil requis dans l'offre (règles regex FR/EN) |
-| **Formation**            | 15 % | Niveau de diplôme détecté (Bac → Doctorat) vs. niveau requis          |
+```
+CV & Offre d'emploi (PDF, DOCX, TXT)
+            │
+            ▼
+┌────────────────────────────────────────────────────────┐
+│ 1. Extraction Structurée des Triplets (S-P-O)          │
+│    - Entités : CANDIDATE, ROLE, SKILL, DEGREE, COMPANY │
+│    - Relations qualifiées : dates, durées, dépendances │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 2. Validation Pré-Scoring & Détection de Conflits      │
+│    - Inversions temporelles (start_date > end_date)     │
+│    - Anachronismes (usage techno < date de sortie)      │
+│    - Sur-déclaration cumulative (années > contrats)    │
+│    ➔ ValidationReport(conflicts, penalty_factor)       │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 3. Représentation Ontologique (RDFLib & NetworkX)      │
+│    - Schéma RDF/SKOS (CV.Skill, skos:broader, etc.)     │
+│    - Conversion bidirectionnelle vers nx.MultiDiGraph  │
+│    - Réification des arêtes (dates, confiance)         │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 4. Analyse Topologique & Scoring GraphRAG              │
+│    - Personalized PageRank (PPR) diffusé depuis l'offre│
+│    - Crédit partiel pour compétences proches (SKOS)    │
+│    - Détection de communautés (Louvain) & Synthèse     │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ 5. Synthèse & Classement Multi-Facteurs                │
+│    FinalScore = α·Vector + β·GraphMatch - γ·Penalty    │
+│    Tableau de classement + Audit d'explicabilité       │
+└────────────────────────────────────────────────────────┘
+```
 
-Chaque sous-score est calculé de façon déterministe et documentée dans
-`scorer.py` — aucune "boîte noire" : un score peut toujours être justifié
-auprès d'un candidat ou d'un manager.
+---
 
-**Limites connues (documentées dans le code) :**
-- L'extraction d'expérience repose sur des formulations explicites
-  ("5 ans d'expérience") plutôt que sur le calcul des dates d'emploi.
-- La taxonomie de compétences est curatée manuellement ; elle est conçue
-  pour être étendue facilement (ajout d'une clé dans `skills_data.py`).
-- Les PDF scannés sans couche de texte (images) ne peuvent pas être lus
-  sans étape d'OCR supplémentaire (non incluse).
+## 3. Formule de Scoring Hybride
 
-## Installation
+Le classement des candidats repose sur une formulation objective et configurable :
 
-Prérequis : Python ≥ 3.10.
+$$\text{FinalScore} = \alpha \cdot \text{VectorSimilarity} + \beta \cdot \text{GraphMatchScore} - \gamma \cdot \text{ConflictPenalty}$$
+
+| Composante | Rôle & Méthode de Calcul |
+|---|---|
+| **$\text{VectorSimilarity}$** | Similarité textuelle TF-IDF et recouvrement lexical entre le profil et l'offre d'emploi. |
+| **$\text{GraphMatchScore}$** | Synthèse topologique combinant :<br>• **Personalized PageRank (PPR)** : diffusion d'importance depuis les compétences requises par l'offre vers le nœud candidat.<br>• **Distance Taxopathique SKOS** : attribution d'un crédit partiel pour les technologies parentes ou connexes (ex. *PyTorch* ➔ *Deep Learning* = 1 saut, *TensorFlow* = 2 sauts).<br>• **Similarité de Jaccard** : taux de recouvrement strict des compétences. |
+| **$\text{ConflictPenalty}$** | Pénalité déductive issue du `ValidationReport` proportionnelle à la sévérité des anomalies détectées. |
+
+---
+
+## 4. Détection Automatisée des Incohérences
+
+Avant toute étape de scoring, le module `ConsistencyValidator` applique des règles de cohérence :
+1. **Inversions temporelles** : détection des relations où la date de début est postérieure à la date de fin (`start_date > end_date`).
+2. **Anachronismes technologiques** : vérification de la date de première utilisation déclarée par rapport au registre officiel des versions (ex. déclarer l'utilisation de *FastAPI* en 2014 alors qu'il est sorti en 2018).
+3. **Sur-déclaration cumulative** : union des intervalles d'emplois documentés pour vérifier si le volume d'années déclaré sur une compétence est effectivement étayé par les postes occupés.
+4. **Vérification d'hallucination** : contrôle des entités extraites par rapport aux limites textuelles du document source.
+
+---
+
+## 5. Synthèse GraphRAG & Détection de Communautés
+
+Le module `GraphRAGSummaryEngine` :
+- Segmente le sous-graphe du candidat en modules cohérents grâce à l'algorithme de **modularité de Louvain** (`networkx.algorithms.community.louvain_communities`).
+- Identifie les domaines d'expertise dominants (ex. *AI & Machine Learning*, *Architecture Backend & APIs*, *Cloud & Infrastructure*).
+- Génère un audit qualitatif explicable (`generate_candidate_critique`) détaillant :
+  - Les compétences validées directement vs déduites par ontologie.
+  - La continuité de la trajectoire professionnelle.
+  - Le résumé exhaustif des alertes temporelles et de cohérence.
+
+---
+
+## 6. Installation & Prérequis
+
+Prérequis : **Python ≥ 3.10**.
 
 ```bash
+# 1. Cloner ou ouvrir le projet
 cd cv-ranker
-python3 -m venv .venv
-source .venv/bin/activate        # Windows : .venv\Scripts\activate
+
+# 2. Créer et activer l'environnement virtuel
+python -m venv .venv
+# Sur Windows :
+.venv\Scripts\activate
+# Sur Linux/macOS :
+source .venv/bin/activate
+
+# 3. Installer les dépendances
 pip install -r requirements.txt
 ```
 
-## Lancer l'application
+### Configuration des variables d'environnement (optionnel)
+Créez un fichier `.env` si vous souhaitez utiliser l'extraction LLM via Groq :
+```env
+GROQ_API_KEY=votre_cle_api_groq
+```
+*Note : Si aucune clé n'est fournie, le système bascule automatiquement et de manière transparente sur le parseur déterministe hors ligne.*
+
+---
+
+## 7. Exécution des Tests
+
+La suite de tests unitaires valide l'ensemble du pipeline (détection d'incohérences, graphe RDFLib/NetworkX, scoring topologique et GraphRAG) :
+
+```bash
+python -m pytest tests/test_contradictions.py tests/test_graph_builder.py tests/test_ranking.py -v
+```
+
+Exemple de sortie :
+```
+tests/test_contradictions.py::test_clean_candidate_passes_validation PASSED
+tests/test_contradictions.py::test_temporal_inversion_detected PASSED
+tests/test_contradictions.py::test_anachronism_detected PASSED
+tests/test_contradictions.py::test_cumulative_overclaiming_detected PASSED
+tests/test_contradictions.py::test_multiple_contradictions_accumulate_penalty PASSED
+tests/test_graph_builder.py::test_payload_to_rdflib_ingestion PASSED
+tests/test_graph_builder.py::test_rdflib_to_networkx_preserves_attributes PASSED
+tests/test_graph_builder.py::test_bidirectional_conversion_networkx_to_rdflib PASSED
+tests/test_ranking.py::test_ontological_distance_and_partial_credit PASSED
+tests/test_ranking.py::test_clean_candidate_ranking_flow PASSED
+tests/test_ranking.py::test_contradictory_candidate_receives_penalty PASSED
+tests/test_ranking.py::test_ppr_diffusion_and_community_critique PASSED
+tests/test_ranking.py::test_extractor_end_to_end_parsing PASSED
+tests/test_ranking.py::test_multiple_candidate_ranking_order PASSED
+
+============================= 14 passed in 3.54s ==============================
+```
+
+---
+
+## 8. Lancer l'Interface Streamlit
 
 ```bash
 streamlit run app.py
 ```
+Accédez ensuite à `http://localhost:8501` pour tester l'application interactive.
 
-Puis ouvrez l'URL affichée (par défaut http://localhost:8501).
+---
 
-## Utilisation
-
-1. Collez le texte de l'offre d'emploi, ou importez-la en PDF/DOCX/TXT.
-2. Importez un ou plusieurs CV (PDF, DOCX ou TXT).
-3. Ajustez si besoin la pondération des critères dans la barre latérale.
-4. Cliquez sur **Lancer le classement**.
-5. Consultez le tableau de classement, exportez-le en CSV, et dépliez chaque
-   candidat pour voir le détail des points forts / points faibles.
-
-## Étendre la taxonomie de compétences
-
-Ouvrez `src/extraction/skills_data.py` et ajoutez une entrée dans la
-catégorie appropriée :
+## 9. Exemple d'Utilisation en Python
 
 ```python
-"Nom affiché de la compétence": ["synonyme1", "synonyme 2", "abréviation"],
+from src.pipeline.extractor import KnowledgeGraphExtractor
+from src.pipeline.ranker import HybridRanker
+from src.graph.graph_rag import GraphRAGSummaryEngine
+
+# 1. Extraction des graphes candidat et offre
+extractor = KnowledgeGraphExtractor(use_llm=False)
+cv_graph = extractor.extract_candidate(cv_text, candidate_id="cand_1", candidate_name="Dr. Alan Turing")
+jd_graph = extractor.extract_job(job_text, job_id="job_1", title="Lead AI Engineer")
+
+# 2. Classement et calcul du score hybride
+ranker = HybridRanker()
+result = ranker.score_candidate(cv_graph, jd_graph)
+
+print(f"Score final : {result.final_score}/100")
+print(f"PPR Score : {result.graph_breakdown.ppr_score}")
+print(f"Score taxonomique SKOS : {result.graph_breakdown.ontological_distance_score}")
+print(f"Pénalité conflits : {result.conflict_penalty}")
+
+# 3. Synthèse GraphRAG et audit explicable
+engine = GraphRAGSummaryEngine(use_llm=False)
+critique = engine.generate_candidate_critique(cv_graph, jd_graph)
+print(critique)
 ```
-
-Les motifs sont des expressions régulières (insensibles à la casse et aux
-accents) : les caractères spéciaux regex (`.`, `+`, `#`...) doivent être
-échappés avec `\\`.
-
-## Tests
-
-Un test de bout en bout rapide (extraction + scoring, sans dépendance à
-Streamlit) peut être exécuté directement :
-
-```bash
-python3 -c "
-from src.extraction.extractor import ExtractedProfile
-from src.scoring.scorer import score_candidate
-job = ExtractedProfile.from_text(open('exemple_offre.txt').read())
-cv = ExtractedProfile.from_text(open('exemple_cv.txt').read())
-print(score_candidate(cv, job))
-"
-```
-
-## Évolutions possibles
-
-- Extraction de dates d'emploi (au lieu de la seule mention explicite
-  des années d'expérience) pour un calcul plus robuste.
-- OCR pour les CV scannés (ex. `pytesseract`).
-- Détection de la localisation du candidat / contrainte de mobilité.
-- Export PDF du dossier de synthèse par candidat.
