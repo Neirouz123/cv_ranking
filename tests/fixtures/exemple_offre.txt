@@ -1,0 +1,26 @@
+Titre du poste : Développeur Backend Senior Python / Cloud (H/F)
+
+Entreprise :
+TechScale Solutions est un éditeur de logiciels en forte croissance spécialisé dans les plateformes SaaS B2B à haute disponibilité. Pour accompagner le développement de nos nouvelles fonctionnalités et renforcer notre équipe d'ingénierie logicielle, nous recrutons un Développeur Backend Senior Python (H/F).
+
+Missions principales :
+- Conception, développement et maintenance d'APIs RESTful et de microservices performants en Python avec FastAPI.
+- Modélisation, optimisation et requêtage avancé sur bases de données relationnelles PostgreSQL.
+- Conteneurisation des services applicatifs avec Docker et orchestration sur des clusters Kubernetes hébergés sur AWS.
+- Conception et fiabilisation des chaînes d'intégration et déploiement continus (CI/CD) avec Git.
+- Mise en œuvre de mécanismes de cache distribué et de files de messages avec Redis.
+- Participation active à l'architecture technique, aux revues de code et aux rituels Agile / Scrum.
+
+Profil recherché :
+- Formation : Diplôme d'Ingénieur ou Master en Informatique (Bac+5).
+- Expérience : 5 ans d'expérience minimum en développement backend d'applications distribuées.
+
+Compétences indispensables (Must-have) :
+- Maîtrise approfondie du langage Python et du framework moderne FastAPI.
+- Solide expertise des bases de données PostgreSQL et de la conception de schémas relationnels SQL.
+- Pratique confirmée de la conteneurisation avec Docker et des services Cloud AWS.
+
+Compétences appréciées (Nice-to-have) :
+- Expérience concrète avec Kubernetes, Redis et TypeScript.
+- Pratique éprouvée des pipelines d'intégration continue CI/CD et du versioning Git.
+- Bonne communication et aisance au sein d'une équipe pluridisciplinaire en méthodologie Agile / Scrum.

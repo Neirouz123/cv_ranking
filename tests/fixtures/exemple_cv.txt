@@ -1,0 +1,31 @@
+Thomas Laurent
+Ingénieur Backend Senior Python
+thomas.laurent@example.com | Paris, France | github.com/thomas-laurent-demo
+
+Profil professionnel :
+Ingénieur logiciel avec 5 ans d'expérience dans la conception, le développement et le déploiement d'architectures backend distribuées et d'APIs scalables. Spécialiste de l'écosystème Python (FastAPI), des bases relationnelles PostgreSQL et des infrastructures Cloud conteneurisées avec Docker, Kubernetes et AWS. Habitué aux environnements Agile / Scrum et aux bonnes pratiques d'ingénierie logicielle.
+
+Formation académique :
+2019 : Diplôme d'Ingénieur / Master en Informatique (Bac+5), Télécom Paris
+
+Expériences professionnelles :
+
+2022-01 - 2024-06 : Lead Développeur Backend chez TechScale Solutions
+- Direction technique de l'architecture microservices : conception et livraison d'APIs REST haute performance avec Python et FastAPI.
+- Modélisation et requêtage optimisé de bases de données PostgreSQL à forte volumétrie.
+- Conteneurisation complète avec Docker et déploiement automatisé sur cluster Kubernetes managé sur AWS.
+- Intégration de caches haute performance avec Redis réduisant la latence globale de 40%.
+- Automatisation des tests et des pipelines CI/CD sous Git au sein d'une équipe pluridisciplinaire Agile / Scrum.
+
+2019-09 - 2021-12 : Développeur Backend Python chez CloudTech Systems
+- Développement de nouveaux modules applicatifs et endpoints d'API RESTful avec Python et FastAPI.
+- Conception de modèles de données sous PostgreSQL et écriture de requêtes SQL optimisées.
+- Conteneurisation des environnements de développement et de recette avec Docker.
+- Collaboration en équipe internationale, revues de code systématiques et suivi sous Git et Scrum.
+
+Compétences techniques :
+- Langages & Frameworks : Python, FastAPI, TypeScript, SQL
+- Bases de données : PostgreSQL, Redis
+- Cloud & DevOps : Docker, Kubernetes, AWS, CI/CD, Git
+- Méthodologies & Outils : Agile, Scrum, Architecture Microservices
+- Langues : Français (courant), Anglais professionnel

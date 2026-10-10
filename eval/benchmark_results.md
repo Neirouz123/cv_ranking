@@ -11,9 +11,3 @@
 | **Ablation: w/o Taxonomie SKOS** | `0.5566` | `0.8125` | `-0.120` | Appariement binaire sans crédit partiel ontologique |
 | **Ablation: w/o Pénalités (γ=0)** | `0.6374` | `0.9037` | `-0.039` | Absence de déduction pour anachronismes / inversions |
 | **✨ Proposed Full Unified Ranker** | `0.5539` | `0.7932` | `-0.123` | Modèle complet : Vecteur + Graphe + Exp + Diplôme - Pénalités |
-
-> **Observations clés :**
-> 1. Le **Proposed Full Unified Ranker** surpasse nettement la Baseline TF-IDF (NDCG@5 > 0.95 vs ~0.76).
-> 2. L'ablation des pénalités (`w/o Pénalités`) dégrade la corrélation car les profils falsifiés (inversions temporelles, anachronismes) ne sont plus rétrogradés.
-> 3. L'ablation ontologique (`w/o Taxonomie SKOS`) pénalise les candidats dotés de compétences connexes légitimes (ex. PyTorch ➔ Deep Learning, TensorFlow).
-> 4. L'unification mathématique (`compute_final_rank`) élimine le plafonnement arbitraire à 90 et permet aux profils parfaits d'atteindre exactement 100.0.

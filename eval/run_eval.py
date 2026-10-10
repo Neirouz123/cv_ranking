@@ -258,15 +258,6 @@ def run_all_benchmarks():
             f"| **{r['name']}** | `{r['spearman']:.4f}` | `{r['ndcg']:.4f}` | `{r['delta']}` | {r['desc']} |"
         )
 
-    md_lines.append("")
-    md_lines.append(
-        "> **Observations clés :**\n"
-        "> 1. Le **Proposed Full Unified Ranker** surpasse nettement la Baseline TF-IDF (NDCG@5 > 0.95 vs ~0.76).\n"
-        "> 2. L'ablation des pénalités (`w/o Pénalités`) dégrade la corrélation car les profils falsifiés (inversions temporelles, anachronismes) ne sont plus rétrogradés.\n"
-        "> 3. L'ablation ontologique (`w/o Taxonomie SKOS`) pénalise les candidats dotés de compétences connexes légitimes (ex. PyTorch ➔ Deep Learning, TensorFlow).\n"
-        "> 4. L'unification mathématique (`compute_final_rank`) élimine le plafonnement arbitraire à 90 et permet aux profils parfaits d'atteindre exactement 100.0."
-    )
-
     md_table = "\n".join(md_lines)
     result_path = Path("eval/benchmark_results.md")
     result_path.write_text(md_table + "\n", encoding="utf-8")
