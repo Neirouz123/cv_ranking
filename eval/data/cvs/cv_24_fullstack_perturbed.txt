@@ -1,0 +1,11 @@
+Damien Colin
+Fullstack Developer
+damien.colin@example.com
+
+Formation:
+2016 - 2021: Master Génie Logiciel (Bac+5).
+
+Expérience Professionnelle:
+2024-06 - 2019-01: Fullstack Lead chez InvertWeb
+- Utilisation intensive de React et FastAPI pour des applications distribuées.
+- Utilisation de FastAPI déclarée en 2014 sur des projets d'études.

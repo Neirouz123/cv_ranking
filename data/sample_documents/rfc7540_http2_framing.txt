@@ -1,0 +1,24 @@
+RFC 7540: Hypertext Transfer Protocol Version 2 (HTTP/2)
+Specification Excerpt: Framing, Multiplexing, and Parameter Profiles
+
+Section 1. Architectural Overview and Dependencies
+HTTP/2 enables a more efficient use of network resources and a reduced perception of latency by introducing header field compression and allowing multiple concurrent exchanges on the same connection.
+HTTP/2 depends on TCP as its underlying reliable transport protocol. The secure profile of HTTP/2 depends on TLS 1.2 or higher with ALPN negotiation.
+Header Compression depends on RFC 7540 specification rules.
+
+Section 3.5. HTTP/2 Connection Preface and Transport
+In HTTP/2, Stream Multiplexing allows interleaving of request and response messages without head-of-line blocking. Stream Multiplexing depends on TCP and requires Binary Framing for packet encapsulation.
+Protocol Incompatibility Notice: HTTP/2 Cleartext (h2c) conflicts with TLS Mandatory Deployment Profiles. Furthermore, legacy TLS 1.0 protocol conflicts with the RFC 7540 Cipher Suite Blacklist.
+
+Section 4.1. Frame Size and Multiplexing Parameters
+Section 4.1 defines SETTINGS_MAX_FRAME_SIZE = 16384 octets.
+Section 4.1 defines SETTINGS_HEADER_TABLE_SIZE = 4096 bytes.
+
+Section 5.2. Flow Control and Stream Concurrency
+Section 5.2 defines SETTINGS_INITIAL_WINDOW_SIZE = 65535 octets for each stream.
+Section 5.2 defines SETTINGS_MAX_CONCURRENT_STREAMS = 100 concurrent streams.
+Flow Control depends on Stream Multiplexing.
+
+Section 9.2. Legacy Migration and Conflicting Configurations
+Section 9.2 defines SETTINGS_INITIAL_WINDOW_SIZE = 16384 octets for constrained edge gateways.
+Warning: HTTP/2 Cleartext (h2c) conflicts with Strict Transport Security (HSTS).

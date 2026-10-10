@@ -1,0 +1,11 @@
+Antoine Caron
+Infirmier Diplômé d'État
+antoine.caron@example.com
+
+Formation:
+2016 - 2019: Diplôme d'État d'Infirmier (Bac+3), IFSI Paris.
+
+Expérience Professionnelle:
+2019-10 - 2024-05: Infirmier en Soins Intensifs au CHU
+- Prise en charge globale des patients en service de réanimation.
+- Administration des thérapeutiques médicamenteuses et surveillance vitale.

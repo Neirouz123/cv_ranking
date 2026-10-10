@@ -1,0 +1,10 @@
+{
+  "job_id": "job_1_junior_ml",
+  "title": "Junior Machine Learning Engineer",
+  "required_experience_years": 1.5,
+  "required_degree_level": 5,
+  "required_degree_name": "Master ou Diplôme d'Ingénieur en Informatique / IA",
+  "must_have_skills": ["python", "pytorch"],
+  "nice_to_have_skills": ["scikit-learn", "git", "docker"],
+  "raw_text": "Titre du poste: Junior Machine Learning Engineer.\nNous recherchons un ingénieur Machine Learning junior (1 à 2 ans d'expérience ou stage significatif) titulaire d'un diplôme Bac+5 (Master ou Diplôme d'Ingénieur en informatique ou Data Science).\nCompétences indispensables (Must-have): Maîtrise rigoureuse de Python et PyTorch pour l'entraînement et l'évaluation de modèles de Deep Learning.\nCompétences souhaitées (Nice-to-have): Scikit-learn, Git, conteneurisation avec Docker, bonnes pratiques MLOps.\nEnvironnement bilingue français et anglais."
+}

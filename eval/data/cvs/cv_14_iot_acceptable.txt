@@ -1,0 +1,11 @@
+Elise Fournier
+Développeuse Microcontrôleurs
+elise.fournier@example.com
+
+Formation:
+2018 - 2021: Licence Professionnelle Systèmes Électroniques (Bac+3).
+
+Expérience Professionnelle:
+2021-09 - 2024-03: Développeuse Firmware chez ElectroSens
+- Programmation en langage C pour cibles STM32 et microcontrôleurs.
+- Gestion de bus de communication UART, SPI, I2C sous environnement Linux.

@@ -1,0 +1,13 @@
+Romain Garnier
+Ingénieur Systèmes Embarqués & IoT
+romain.garnier@example.com
+
+Formation:
+2015 - 2020: Diplôme d'Ingénieur en Systèmes Embarqués (Bac+5), ENSEA.
+
+Expérience Professionnelle:
+2020-09 - 2024-06: Ingénieur Embarqué chez IoT Innovations
+- Conception firmware en langage C et C++ sur cibles microcontrôleurs ARM Cortex.
+- Programmation multitâche temps réel avec l'OS FreeRTOS (tâches, mutex, queues).
+- Implémentation du protocole MQTT pour capteurs industriels connectés.
+- Environnement de build et tests sous Linux embarqué.

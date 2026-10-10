@@ -1,0 +1,12 @@
+Sophie Delattre
+Développeuse Web Fullstack
+sophie.delattre@example.com
+
+Formation:
+2018 - 2021: Licence Informatique Web & Mobile (Bac+3).
+
+Expérience Professionnelle:
+2021-09 - 2024-05: Développeuse Fullstack chez Digital Agency
+- Développement d'applications web interactives avec React.
+- Création de serveurs backend avec Node.js, Express et bases PostgreSQL.
+- Utilisation quotidienne de Docker pour les environnements de test.

@@ -1,0 +1,19 @@
+Ingénieur logiciel senior spécialisé en architecture microservices et conteneurs Docker et Kubernetes.
+
+Data Scientist avec expertise en apprentissage automatique, réseaux de neurones PyTorch et traitement du langage naturel.
+
+Développeur Fullstack expérimenté en TypeScript, React, Next.js, Node.js et bases de données PostgreSQL.
+
+Lead Cloud DevOps maîtrisant Terraform, AWS, Azure, pipelines CI/CD et surveillance Prometheus Grafana.
+
+Développeur systèmes embarqués bas niveau en langage C et C++, RTOS, FreeRTOS, microcontrôleurs STM32 et bus CAN.
+
+Chef de projet technique agile Scrum Master assurant la coordination des équipes de développement logiciel et les livrables.
+
+Data Engineer expérimenté en streaming de données temps réel avec Apache Kafka, Apache Spark, Databricks et Snowflake.
+
+Expert en cybersécurité, analyse des vulnérabilités, tests d'intrusion, protocoles TLS et conformité ISO 27001.
+
+Administrateur systèmes et réseaux Linux RedHat, Debian, virtualisation VMware et automatisation Ansible.
+
+Développeur backend Python FastAPI et Django, conception d'APIs REST sécurisées et intégration continue.

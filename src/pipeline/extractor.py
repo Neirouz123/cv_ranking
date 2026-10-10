@@ -22,6 +22,7 @@ from src.core.models import (
     EntityCategory,
     ExtractedGraph,
     JobDescriptionGraphPayload,
+    JobRequirement,
     PredicateType,
     Relation,
 )
@@ -83,23 +84,93 @@ Respond ONLY with the JSON object, with no markdown code fences or conversationa
 """
 
 
+def get_llm_client(api_key: Optional[str] = None):
+    """
+    On-demand lazy-loader for ChatGroq. Returns None if no valid API key is present
+    or if langchain_groq cannot be loaded.
+    """
+    key = api_key or os.getenv("GROQ_API_KEY")
+    if not key or not str(key).strip():
+        return None
+    try:
+        from langchain_groq import ChatGroq
+        return ChatGroq(model_name="llama-3.3-70b-versatile", api_key=key, temperature=0.1)
+    except Exception:
+        try:
+            from langchain_groq import ChatGroq
+            return ChatGroq(model="llama-3.3-70b-versatile", api_key=key, temperature=0.1)
+        except Exception:
+            return None
+
+
+# Structured extraction prompt for Technical Documents, RFCs, and Specifications
+DOCUMENT_EXTRACTION_PROMPT = """You are an expert Technical Knowledge Graph Extraction system for technical standards, RFCs, and engineering specifications.
+Analyze the following text and extract a structured knowledge graph in strictly valid JSON format.
+
+CRITICAL INSTRUCTIONS:
+1. Extract all key ENTITIES:
+   - CONCEPT: High-level architectural or protocol concepts (e.g., "Stream Multiplexing", "Flow Control", "HPACK Compression", "Zero-RTT")
+   - SPECIFICATION: Standards, RFCs, or formal specifications (e.g., "RFC 7540", "RFC 9000", "TLS 1.2", "TCP", "MQTT 5.0")
+   - PROTOCOL: Concrete protocols or wire formats (e.g., "HTTP/2", "QUIC", "HTTP/1.1", "h2c")
+   - SECTION: Specific sections or clauses in the document (e.g., "Section 3.1", "Section 5.2 - Flow Control")
+   - PARAMETER: Configurable parameters, settings, or constants (e.g., "SETTINGS_INITIAL_WINDOW_SIZE", "KeepAlive", "MaxConcurrentStreams")
+2. Extract RELATIONS with confidence and verbatim source snippets:
+   - CONCEPT -> DEPENDS_ON -> SPECIFICATION
+   - SECTION -> DEFINES -> PARAMETER (include defined value in metadata if applicable)
+   - PROTOCOL -> CONFLICTS_WITH -> PROTOCOL (incompatible protocols, cipher suites, or mutual exclusions)
+   - PROTOCOL -> DEPENDS_ON -> SPECIFICATION
+3. DO NOT hallucinate any entity or claim not explicitly supported by the text.
+
+JSON Output Schema:
+{{
+  "document_title": "<document title or id>",
+  "entities": [
+    {{
+      "id": "<category_prefix:identifier>",
+      "name": "<display name>",
+      "category": "CONCEPT" | "SPECIFICATION" | "PROTOCOL" | "SECTION" | "PARAMETER",
+      "metadata": {{"value": "<parameter value or details>"}}
+    }}
+  ],
+  "relations": [
+    {{
+      "subject_id": "<entity_id>",
+      "predicate": "DEPENDS_ON" | "DEFINES" | "CONFLICTS_WITH",
+      "object_id": "<entity_id>",
+      "confidence": <float between 0.0 and 1.0>,
+      "source_snippet": "<verbatim excerpt from text>"
+    }}
+  ]
+}}
+
+Source Text:
+---
+{text}
+---
+
+Respond ONLY with the JSON object, with no markdown code fences or conversational text.
+"""
+
+
 class KnowledgeGraphExtractor:
     """
-    Extracts structured entities, relations, and temporal qualifiers from CV and JD documents.
+    Extracts structured entities, relations, and temporal qualifiers from CV and JD documents,
+    as well as technical papers, RFCs, and engineering specifications.
     """
 
-    def __init__(self, model_name: str = "llama-3.3-70b-versatile", use_llm: bool = True) -> None:
+    def __init__(
+        self,
+        model_name: str = "llama-3.3-70b-versatile",
+        use_llm: bool = True,
+        api_key: Optional[str] = None,
+    ) -> None:
         self.model_name = model_name
         self.use_llm = use_llm
+        self.api_key = api_key
         self._llm = None
 
-        api_key = os.environ.get("GROQ_API_KEY")
-        if self.use_llm and api_key:
-            try:
-                from langchain_groq import ChatGroq
-                self._llm = ChatGroq(model=self.model_name, api_key=api_key, temperature=0.0)
-            except Exception:
-                self._llm = None
+        if self.use_llm:
+            self._llm = get_llm_client(api_key=api_key)
 
     def extract_candidate(
         self,
@@ -138,6 +209,26 @@ class KnowledgeGraphExtractor:
                 pass
 
         return self._extract_deterministic_job(job_text, jid, title)
+
+    def extract_document(
+        self,
+        document_text: str,
+        document_id: Optional[str] = None,
+        document_title: Optional[str] = None,
+    ) -> ExtractedGraph:
+        """
+        Extract knowledge graph representation for a technical document, RFC, or specification.
+        """
+        doc_id = document_id or f"doc_{uuid.uuid4().hex[:6]}"
+        title = document_title or "Technical Document"
+
+        if self._llm is not None:
+            try:
+                return self._extract_with_llm_document(document_text, doc_id, title)
+            except Exception:
+                pass
+
+        return self._extract_deterministic_document(document_text, doc_id, title)
 
     def _extract_with_llm_candidate(
         self, cv_text: str, candidate_id: str, candidate_name: Optional[str]
@@ -400,13 +491,16 @@ class KnowledgeGraphExtractor:
                 )
             )
 
-        return ExtractedGraph(
+        cand_graph = ExtractedGraph(
             candidate_id=candidate_id,
             name=name,
             entities=entities,
             relations=relations,
             raw_text=cv_text,
         )
+        cand_graph.degree_level = cand_graph.resolve_degree_level()
+        cand_graph.experience_years = cand_graph.compute_active_career_duration_years()
+        return cand_graph
 
     def _extract_deterministic_job(
         self, job_text: str, job_id: str, title: Optional[str]
@@ -431,11 +525,63 @@ class KnowledgeGraphExtractor:
                 )
             )
 
+        # Extract required experience years
+        lower_job = job_text.lower()
+        req_exp = None
+        range_m = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:à|to|-)\s*(\d+(?:[.,]\d+)?)\s*(?:ans|annees|années|years)", lower_job)
+        if range_m:
+            req_exp = (float(range_m.group(1).replace(",", ".")) + float(range_m.group(2).replace(",", "."))) / 2.0
+        else:
+            single_m = re.search(r"(\d+(?:[.,]\d+)?)\s*\+?\s*(?:ans|annees|années|years)", lower_job)
+            if single_m:
+                req_exp = float(single_m.group(1).replace(",", "."))
+            elif re.search(r"\b(?:senior|sénior|lead)\b", lower_job):
+                req_exp = 5.0
+            elif re.search(r"\b(?:junior|debutant|débutant)\b", lower_job):
+                req_exp = 1.5
+            elif re.search(r"\b(?:stage|internship|intern)\b", lower_job):
+                req_exp = 0.5
+
+        # Extract required degree level
+        req_deg = None
+        if re.search(r"\b(?:bac\+8|doctorat|phd)\b", lower_job):
+            req_deg = 8
+        elif re.search(r"\b(?:bac\+5|master|ingenieur|ingénieur|msc)\b", lower_job):
+            req_deg = 5
+        elif re.search(r"\b(?:bac\+3|licence|bachelor|but)\b", lower_job):
+            req_deg = 3
+        elif re.search(r"\b(?:bac\+2|bts|dut)\b", lower_job):
+            req_deg = 2
+        elif re.search(r"\b(?:bac)\b", lower_job):
+            req_deg = 1
+
+        # Must vs Nice requirements detection
+        sentences = re.split(r"[.\n;]", job_text)
+        nice_kw = ["souhaité", "souhaite", "un plus", "nice-to-have", "nice to have", "apprécié", "apprecie", "atout", "optionnel", "bonus"]
+        must_kw = ["indispensable", "requis", "must-have", "must have", "obligatoire", "exigé", "exige", "impératif", "imperatif", "incontournable"]
+
+        requirements: list[JobRequirement] = []
+        for s_id, s_label in found_skills:
+            is_nice = False
+            for sent in sentences:
+                sent_l = sent.lower()
+                if s_label.lower() in sent_l:
+                    if any(kw in sent_l for kw in nice_kw) and not any(kw in sent_l for kw in must_kw):
+                        is_nice = True
+                        break
+
+            importance = "nice" if is_nice else "must"
+            weight = 0.5 if is_nice else 1.0
+            requirements.append(JobRequirement(skill_id=s_id, name=s_label, importance=importance, weight=weight))
+
         return JobDescriptionGraphPayload(
             job_id=job_id,
             title=job_title,
             entities=entities,
             relations=relations,
+            requirements=requirements,
+            required_experience_years=req_exp,
+            required_degree_level=req_deg,
             raw_text=job_text,
         )
 
@@ -461,9 +607,9 @@ class KnowledgeGraphExtractor:
         """Parse employment date ranges and associated text snippets."""
         blocks: list[dict] = []
 
-        # Matches patterns like '2019 - 2022', '01/2020 - 05/2023', '2021 - Present'
+        # Matches patterns like '2019 - 2022', '2024-06 - 2021-01', '01/2020 - 05/2023', '2021 - Present'
         pattern = re.compile(
-            r"(?P<start>(?:\d{1,2}[/\-])?\d{4})\s*(?:-|à|to|au)\s*(?P<end>(?:\d{1,2}[/\-])?\d{4}|present|actuel|en cours)",
+            r"(?P<start>(?:\d{4}(?:[-/.]\d{1,2})?)|(?:\d{1,2}[-/.]\d{4}))\s*(?:-|à|to|au)\s*(?P<end>(?:\d{4}(?:[-/.]\d{1,2})?)|(?:\d{1,2}[-/.]\d{4})|present|actuel|en cours)",
             re.IGNORECASE,
         )
 
@@ -517,4 +663,233 @@ class KnowledgeGraphExtractor:
             if len(first_line.split()) in [2, 3] and not re.search(r"[:\d]", first_line):
                 return first_line
         return None
+
+    def _extract_with_llm_document(
+        self, text: str, document_id: str, title: Optional[str]
+    ) -> ExtractedGraph:
+        prompt = DOCUMENT_EXTRACTION_PROMPT.format(text=text)
+        res = self._llm.invoke(prompt)
+        content = res.content.strip()
+
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            content = "\n".join(lines).strip()
+
+        data = json.loads(content)
+        doc_title = title or data.get("document_title") or "Technical Document"
+
+        entities = [
+            Entity(
+                id=e["id"],
+                label=e.get("name", e.get("label", e["id"])),
+                name=e.get("name", e.get("label", e["id"])),
+                category=EntityCategory[e.get("category", "CONCEPT").upper()],
+                metadata=e.get("metadata", {}),
+            )
+            for e in data.get("entities", [])
+            if e.get("category", "").upper() in EntityCategory.__members__
+        ]
+
+        relations = [
+            Relation(
+                subject_id=r["subject_id"],
+                predicate=PredicateType[r.get("predicate", "DEPENDS_ON").upper()],
+                object_id=r["object_id"],
+                confidence=float(r.get("confidence", 1.0)),
+                source_snippet=r.get("source_snippet", ""),
+                metadata=r.get("metadata", {}),
+            )
+            for r in data.get("relations", [])
+            if r.get("predicate", "").upper() in PredicateType.__members__
+        ]
+
+        return ExtractedGraph(
+            candidate_id=document_id,
+            name=doc_title,
+            entities=entities,
+            relations=relations,
+            raw_text=text,
+        )
+
+    def _extract_deterministic_document(
+        self, text: str, document_id: str, title: Optional[str]
+    ) -> ExtractedGraph:
+        entities_dict: dict[str, Entity] = {}
+        relations: list[Relation] = []
+
+        lines = text.splitlines()
+        current_section_id = f"sec_{document_id}_main"
+        entities_dict[current_section_id] = Entity(
+            id=current_section_id,
+            name=title or "General Document Specification",
+            category=EntityCategory.SECTION,
+        )
+
+        known_entities_catalog: dict[str, tuple[EntityCategory, str, str]] = {
+            "RFC 7540": (EntityCategory.SPECIFICATION, "spec:rfc7540", "RFC 7540 (HTTP/2 Standard)"),
+            "RFC 9000": (EntityCategory.SPECIFICATION, "spec:rfc9000", "RFC 9000 (QUIC Transport)"),
+            "RFC 7230": (EntityCategory.SPECIFICATION, "spec:rfc7230", "RFC 7230 (HTTP/1.1 Message Syntax)"),
+            "HTTP/2": (EntityCategory.PROTOCOL, "proto:http2", "HTTP/2 Protocol"),
+            "HTTP/1.1": (EntityCategory.PROTOCOL, "proto:http1_1", "HTTP/1.1 Protocol"),
+            "HTTP/3": (EntityCategory.PROTOCOL, "proto:http3", "HTTP/3 Protocol"),
+            "TLS 1.3": (EntityCategory.SPECIFICATION, "spec:tls1_3", "TLS 1.3 Security Specification"),
+            "TLS 1.2": (EntityCategory.SPECIFICATION, "spec:tls1_2", "TLS 1.2 Security Specification"),
+            "TLS 1.0": (EntityCategory.PROTOCOL, "proto:tls1_0", "Legacy TLS 1.0 Protocol"),
+            "TCP": (EntityCategory.SPECIFICATION, "spec:tcp", "Transmission Control Protocol (TCP)"),
+            "UDP": (EntityCategory.SPECIFICATION, "spec:udp", "User Datagram Protocol (UDP)"),
+            "QUIC": (EntityCategory.PROTOCOL, "proto:quic", "QUIC Transport Protocol"),
+            "MQTT 5.0": (EntityCategory.SPECIFICATION, "spec:mqtt5", "MQTT 5.0 OASIS Standard"),
+            "MQTT 3.1.1": (EntityCategory.PROTOCOL, "proto:mqtt311", "Legacy MQTT 3.1.1"),
+            "MQTT": (EntityCategory.PROTOCOL, "proto:mqtt", "MQTT Protocol"),
+            "IEEE 802.11": (EntityCategory.SPECIFICATION, "spec:ieee802_11", "IEEE 802.11 Wireless Standard"),
+            "ALPN": (EntityCategory.CONCEPT, "concept:alpn", "Application-Layer Protocol Negotiation (ALPN)"),
+            "HPACK": (EntityCategory.CONCEPT, "concept:hpack", "HPACK Header Compression"),
+            "h2c": (EntityCategory.PROTOCOL, "proto:h2c", "HTTP/2 Cleartext (h2c)"),
+            "TLS Mandatory": (EntityCategory.SPECIFICATION, "spec:tls_mandatory", "TLS Mandatory Deployment Profiles"),
+            "Strict Transport Security": (EntityCategory.SPECIFICATION, "spec:hsts", "Strict Transport Security (HSTS)"),
+            "RFC 7540 Cipher Suite Blacklist": (EntityCategory.SPECIFICATION, "spec:rfc7540_blacklist", "RFC 7540 Cipher Suite Blacklist"),
+            "RFC 7540 Blacklist": (EntityCategory.SPECIFICATION, "spec:rfc7540_blacklist", "RFC 7540 Cipher Suite Blacklist"),
+            "Cipher Suite Blacklist": (EntityCategory.SPECIFICATION, "spec:rfc7540_blacklist", "RFC 7540 Cipher Suite Blacklist"),
+            "CleanStart": (EntityCategory.CONCEPT, "concept:clean_start", "MQTT 5.0 CleanStart Flag"),
+            "CleanSession": (EntityCategory.CONCEPT, "concept:clean_session", "MQTT 3.1.1 CleanSession Flag"),
+            "Stream Multiplexing": (EntityCategory.CONCEPT, "concept:stream_multiplexing", "Stream Multiplexing"),
+            "Flow Control": (EntityCategory.CONCEPT, "concept:flow_control", "Flow Control"),
+            "Binary Framing": (EntityCategory.CONCEPT, "concept:binary_framing", "Binary Framing"),
+            "Header Compression": (EntityCategory.CONCEPT, "concept:header_compression", "Header Compression"),
+            "Zero-RTT Handshake": (EntityCategory.CONCEPT, "concept:zero_rtt", "Zero-RTT Handshake"),
+            "Dynamic Congestion Control": (EntityCategory.CONCEPT, "concept:dynamic_congestion_control", "Dynamic Congestion Control"),
+            "Explicit Congestion Notification": (EntityCategory.SPECIFICATION, "spec:ecn", "Explicit Congestion Notification (ECN)"),
+            "Packet Identifier State Storage": (EntityCategory.SPECIFICATION, "spec:packet_id_storage", "Packet Identifier State Storage"),
+            "Wireless Mesh Architecture": (EntityCategory.CONCEPT, "concept:wireless_mesh", "Wireless Mesh Architecture"),
+            "QoS Exactly-Once Delivery": (EntityCategory.CONCEPT, "concept:qos2", "QoS Exactly-Once Delivery (QoS 2)"),
+        }
+        sorted_keys = sorted(known_entities_catalog.keys(), key=len, reverse=True)
+
+        def _find_entity_info(text_fragment: str) -> Optional[tuple[EntityCategory, str, str]]:
+            frag_lower = text_fragment.lower()
+            for k in sorted_keys:
+                if k.lower() in frag_lower:
+                    return known_entities_catalog[k]
+            return None
+
+        for line in lines:
+            trimmed = line.strip()
+            if not trimmed:
+                continue
+
+            sec_match = re.search(r"(?:Section\s+(\d+(?:\.\d+)*)|(\d+\.\d+(?:\.\d+)*))\s*[:\.\-]?\s*([A-Za-z0-9_\-\s]+)?", trimmed, re.IGNORECASE)
+            if sec_match and (trimmed.lower().startswith("section") or re.match(r"^\d+\.\d+", trimmed)):
+                num = sec_match.group(1) or sec_match.group(2)
+                stitle = (sec_match.group(3) or "").strip()
+                s_clean = f"sec_{num.replace('.', '_')}"
+                s_name = f"Section {num}" + (f" - {stitle}" if stitle else "")
+                current_section_id = s_clean
+                entities_dict[s_clean] = Entity(id=s_clean, name=s_name, category=EntityCategory.SECTION)
+
+            param_match = re.search(
+                r"(?:defines|sets|configures)?\s*([A-Za-z0-9_]{3,35})\s*(?:=|is|=:|\:)\s*([0-9]+(?:\s*[a-zA-Z]+)?)",
+                trimmed,
+                re.IGNORECASE,
+            )
+            if param_match:
+                p_raw = param_match.group(1).strip()
+                v_raw = param_match.group(2).strip()
+                if p_raw.lower() not in {"http", "section", "rfc", "tcp", "udp", "tls", "version", "and", "the", "with"}:
+                    p_id = f"param_{p_raw.lower()}"
+                    entities_dict[p_id] = Entity(
+                        id=p_id,
+                        name=p_raw,
+                        category=EntityCategory.PARAMETER,
+                        metadata={"value": v_raw},
+                    )
+                    relations.append(
+                        Relation(
+                            subject_id=current_section_id,
+                            predicate=PredicateType.DEFINES,
+                            object_id=p_id,
+                            confidence=0.95,
+                            source_snippet=trimmed,
+                            metadata={"value": v_raw},
+                        )
+                    )
+
+            for k in sorted_keys:
+                if k.lower() in trimmed.lower():
+                    cat, ent_id, disp_name = known_entities_catalog[k]
+                    if ent_id not in entities_dict:
+                        entities_dict[ent_id] = Entity(id=ent_id, name=disp_name, category=cat)
+
+            dep_pattern = re.compile(
+                r"([A-Za-z0-9\/\.\s_\-]{2,45})\s+(?:depends on|relies on|requires|built on top of|runs over|is layered upon)\s+([A-Za-z0-9\/\.\s_\-]{2,45})",
+                re.IGNORECASE,
+            )
+            for m in dep_pattern.finditer(trimmed):
+                raw_subj = m.group(1).strip()
+                raw_obj = m.group(2).strip()
+
+                subj_info = _find_entity_info(raw_subj)
+                obj_info = _find_entity_info(raw_obj)
+
+                if subj_info and obj_info and subj_info[1] != obj_info[1]:
+                    relations.append(
+                        Relation(
+                            subject_id=subj_info[1],
+                            predicate=PredicateType.DEPENDS_ON,
+                            object_id=obj_info[1],
+                            confidence=0.92,
+                            source_snippet=trimmed,
+                        )
+                    )
+
+            conf_pattern = re.compile(
+                r"([A-Za-z0-9\/\.\s_\-]{2,45})\s+(?:conflicts with|is incompatible with|forbids|cannot be negotiated with|disallows)\s+([A-Za-z0-9\/\.\s_\-]{2,55})",
+                re.IGNORECASE,
+            )
+            for m in conf_pattern.finditer(trimmed):
+                raw_a = m.group(1).strip()
+                raw_b = m.group(2).strip()
+
+                subj_info = _find_entity_info(raw_a)
+                obj_info = _find_entity_info(raw_b)
+
+                id_a = subj_info[1] if subj_info else f"proto:{re.sub(r'[^a-z0-9_]+', '_', raw_a.lower()).strip('_')}"
+                id_b = obj_info[1] if obj_info else f"proto:{re.sub(r'[^a-z0-9_]+', '_', raw_b.lower()).strip('_')}"
+
+                if not subj_info and id_a not in entities_dict:
+                    entities_dict[id_a] = Entity(id=id_a, name=raw_a, category=EntityCategory.PROTOCOL)
+
+                if not obj_info and id_b not in entities_dict:
+                    entities_dict[id_b] = Entity(id=id_b, name=raw_b, category=EntityCategory.PROTOCOL)
+
+                if id_a and id_b and id_a != id_b:
+                    relations.append(
+                        Relation(
+                            subject_id=id_a,
+                            predicate=PredicateType.CONFLICTS_WITH,
+                            object_id=id_b,
+                            confidence=0.95,
+                            source_snippet=trimmed,
+                        )
+                    )
+
+        unique_rels: list[Relation] = []
+        seen = set()
+        for r in relations:
+            key = (r.subject_id, r.predicate, r.object_id, r.metadata.get("value"))
+            if key not in seen:
+                seen.add(key)
+                unique_rels.append(r)
+
+        return ExtractedGraph(
+            candidate_id=document_id,
+            name=title or "Technical Document",
+            entities=list(entities_dict.values()),
+            relations=unique_rels,
+            raw_text=text,
+        )
+
 

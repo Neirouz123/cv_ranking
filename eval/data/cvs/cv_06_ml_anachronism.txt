@@ -1,0 +1,11 @@
+Benoit Lemoine
+Junior ML Developer
+benoit.lemoine@example.com
+
+Formation:
+2021 - 2023: Master Data Science (Bac+5).
+
+Expérience Professionnelle:
+2011-01 - 2013-05: Machine Learning Intern chez RetroData
+- Utilisation de FastAPI et PyTorch pour le déploiement d'API en production.
+- Revendique 10 ans d'expérience intensive sur Python.

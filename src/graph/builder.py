@@ -34,6 +34,9 @@ PREDICATE_TO_RDF: dict[PredicateType, URIRef] = {
     PredicateType.USED_SKILL: CV.usesSkill,
     PredicateType.DELIVERED_PROJECT: CV.deliveredProject,
     PredicateType.EARNED_DEGREE: CV.earnedDegree,
+    PredicateType.DEPENDS_ON: CV.dependsOn,
+    PredicateType.DEFINES: CV.defines,
+    PredicateType.CONFLICTS_WITH: CV.conflictsWith,
 }
 
 RDF_TO_PREDICATE: dict[URIRef, PredicateType] = {
@@ -43,6 +46,9 @@ RDF_TO_PREDICATE: dict[URIRef, PredicateType] = {
     CV.usesSkill: PredicateType.USES_SKILL,
     CV.deliveredProject: PredicateType.DELIVERED_PROJECT,
     CV.earnedDegree: PredicateType.EARNED_DEGREE,
+    CV.dependsOn: PredicateType.DEPENDS_ON,
+    CV.defines: PredicateType.DEFINES,
+    CV.conflictsWith: PredicateType.CONFLICTS_WITH,
 }
 
 CATEGORY_TO_RDF_CLASS: dict[EntityCategory, URIRef] = {
@@ -52,6 +58,11 @@ CATEGORY_TO_RDF_CLASS: dict[EntityCategory, URIRef] = {
     EntityCategory.DEGREE: CV.Degree,
     EntityCategory.COMPANY: CV.Company,
     EntityCategory.PROJECT: CV.Project,
+    EntityCategory.CONCEPT: CV.Concept,
+    EntityCategory.SPECIFICATION: CV.Specification,
+    EntityCategory.SECTION: CV.Section,
+    EntityCategory.PARAMETER: CV.Parameter,
+    EntityCategory.PROTOCOL: CV.Protocol,
 }
 
 
@@ -60,6 +71,8 @@ def entity_id_to_uri(entity_id: str) -> URIRef:
     clean_id = entity_id.strip().lower()
     if clean_id.startswith("skill:"):
         return SKILL[clean_id[6:]]
+    if clean_id.startswith("spec:") or clean_id.startswith("concept:") or clean_id.startswith("proto:"):
+        return CV[clean_id.split(":", 1)[1].replace(":", "_").replace(" ", "_")]
     return CV[clean_id.replace(":", "_").replace(" ", "_")]
 
 

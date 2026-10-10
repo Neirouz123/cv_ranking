@@ -1,0 +1,10 @@
+{
+  "job_id": "job_2_senior_data_lead",
+  "title": "Senior Data Platform Lead",
+  "required_experience_years": 5.0,
+  "required_degree_level": 5,
+  "required_degree_name": "Master ou Diplôme d'Ingénieur",
+  "must_have_skills": ["spark", "kubernetes", "python"],
+  "nice_to_have_skills": ["kafka", "aws", "docker"],
+  "raw_text": "Titre du poste: Senior Data Platform Lead.\nNous recherchons un Lead Platform Data senior avec au minimum 5 ans d'expérience prouvée dans la conception et l'exploitation d'infrastructures de données distribuées à large échelle. Formation Bac+5 exigée (Master ou école d'ingénieur).\nCompétences obligatoires (Must-have): Maîtrise approfondie d'Apache Spark (PySpark), orchestration de conteneurs sous Kubernetes, et programmation Python avancée.\nCompétences appréciées (Nice-to-have): Apache Kafka pour le streaming temps réel, cloud AWS, CI/CD et Docker.\nExcellentes compétences en leadership technique et gouvernance de données."
+}

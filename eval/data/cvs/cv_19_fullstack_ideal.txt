@@ -1,0 +1,13 @@
+Maxime Gauthier
+Senior Fullstack Developer
+maxime.gauthier@example.com
+
+Formation:
+2015 - 2020: Master en Ingénierie Logicielle (Bac+5), Université de Rennes.
+
+Expérience Professionnelle:
+2020-09 - 2024-06: Fullstack Developer chez SaaS Platform (Bilingual Team FR/EN)
+- Frontend architecture using React and TypeScript for dynamic client interfaces.
+- Backend API REST development with FastAPI and Python.
+- Database modeling and querying with PostgreSQL.
+- Docker containers for local development and CI/CD deployment pipelines.

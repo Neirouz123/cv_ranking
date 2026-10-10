@@ -39,11 +39,13 @@ class TopologicalMatcher:
         weight_ppr: float = 0.35,
         weight_jaccard: float = 0.15,
         ppr_alpha: float = 0.85,
+        use_taxonomy: bool = True,
     ) -> None:
         self.w_onto = weight_ontology
         self.w_ppr = weight_ppr
         self.w_jaccard = weight_jaccard
         self.ppr_alpha = ppr_alpha
+        self.use_taxonomy = use_taxonomy
         self.builder = GraphBuilder(include_ontology_taxonomies=True)
         self.tax_graph = get_taxonomy_networkx()
 
@@ -53,7 +55,8 @@ class TopologicalMatcher:
         jd_payload: JobDescriptionGraphPayload,
     ) -> GraphMatchBreakdown:
         """
-        Compute full topological matching breakdown between candidate and job description.
+        Compute full topological matching breakdown between candidate and job description,
+        applying Must-have vs Nice-to-have weights and identifying missing mandatory skills.
         """
         # Extract normalized skill sets
         cand_skills = {
@@ -64,6 +67,9 @@ class TopologicalMatcher:
             normalize_skill_name(e.id): e.label
             for e in jd_payload.get_skills()
         }
+
+        # Resolve Must vs Nice skills from JD payload
+        must_skills_set = set(normalize_skill_name(s) for s in jd_payload.get_must_skills())
 
         # 1. Jaccard similarity on exact skill sets
         cand_set = set(cand_skills.keys())
@@ -79,30 +85,37 @@ class TopologicalMatcher:
         # 2. Ontological distance scoring via SKOS taxonomy
         matched_exact: list[str] = []
         matched_inferred: list[dict] = []
-        requirement_scores: list[float] = []
+        weighted_scores: list[float] = []
+        total_weights: list[float] = []
+        missing_must_skills: list[str] = []
 
         if not jd_set:
             onto_score = 1.0 if cand_set else 0.5
         else:
             for jd_s_id, jd_label in jd_skills.items():
+                is_must = (jd_s_id in must_skills_set) or (not must_skills_set)
+                req_weight = 1.0 if is_must else 0.5
+                total_weights.append(req_weight)
+
                 if jd_s_id in cand_set:
                     matched_exact.append(jd_skills[jd_s_id])
-                    requirement_scores.append(1.0)
+                    weighted_scores.append(1.0 * req_weight)
                 else:
-                    # Find highest taxonomical similarity among candidate skills
                     best_sim = 0.0
                     best_cand_s = None
                     best_dist = float("inf")
 
-                    for c_s_id, c_label in cand_skills.items():
-                        dist = calculate_taxonomic_distance(c_s_id, jd_s_id, self.tax_graph)
-                        sim = taxonomic_similarity(c_s_id, jd_s_id, taxonomy_graph=self.tax_graph)
-                        if sim > best_sim:
-                            best_sim = sim
-                            best_cand_s = c_label
-                            best_dist = dist
+                    if self.use_taxonomy:
+                        # Find highest taxonomical similarity among candidate skills
+                        for c_s_id, c_label in cand_skills.items():
+                            dist = calculate_taxonomic_distance(c_s_id, jd_s_id, self.tax_graph)
+                            sim = taxonomic_similarity(c_s_id, jd_s_id, taxonomy_graph=self.tax_graph)
+                            if sim > best_sim:
+                                best_sim = sim
+                                best_cand_s = c_label
+                                best_dist = dist
 
-                    requirement_scores.append(best_sim)
+                    weighted_scores.append(best_sim * req_weight)
                     if best_sim > 0.0 and best_cand_s is not None:
                         matched_inferred.append({
                             "candidate_skill": best_cand_s,
@@ -110,18 +123,29 @@ class TopologicalMatcher:
                             "distance": best_dist,
                             "similarity": round(best_sim, 3),
                         })
+                    elif is_must and best_sim == 0.0:
+                        missing_must_skills.append(jd_label)
 
-            onto_score = sum(requirement_scores) / float(len(requirement_scores))
+            sum_w = sum(total_weights) if total_weights else 1.0
+            onto_score = sum(weighted_scores) / float(sum_w)
 
         # 3. Personalized PageRank (PPR)
-        ppr_score = self._compute_ppr(candidate_payload, jd_payload, jd_set)
+        if self.w_ppr > 0.0:
+            ppr_score = self._compute_ppr(candidate_payload, jd_payload, jd_set)
+        else:
+            ppr_score = 0.0
 
-        # 4. Synthesize final graph match score
-        raw_graph_score = (
-            self.w_onto * onto_score
-            + self.w_ppr * ppr_score
-            + self.w_jaccard * jaccard
-        )
+        # 4. Synthesize final graph match score with dynamic normalization
+        w_sum = self.w_onto + self.w_ppr + self.w_jaccard
+        if w_sum > 0:
+            raw_graph_score = (
+                self.w_onto * onto_score
+                + self.w_ppr * ppr_score
+                + self.w_jaccard * jaccard
+            ) / w_sum
+        else:
+            raw_graph_score = onto_score
+
         graph_match_score = min(1.0, max(0.0, raw_graph_score))
 
         return GraphMatchBreakdown(
@@ -131,6 +155,7 @@ class TopologicalMatcher:
             graph_match_score=round(graph_match_score, 4),
             matched_skills_exact=matched_exact,
             matched_skills_inferred=matched_inferred,
+            missing_must_skills=missing_must_skills,
         )
 
     def _compute_ppr(
@@ -201,9 +226,10 @@ class TopologicalMatcher:
         ]
         sum_skills = sum(cand_skill_scores)
 
-        # Scale by node count to make PPR scale-independent
+        # Scale by node count to make PPR scale-independent with an upper bound
         node_count = joint_graph.number_of_nodes()
-        effective_ppr = (cand_score * 2.0 + sum_skills) * (node_count / 10.0)
+        scale_factor = min(2.5, max(1.0, node_count / 10.0))
+        effective_ppr = (cand_score * 2.0 + sum_skills) * scale_factor
 
         # Normalize score into [0.0, 1.0]
         normalized_ppr = min(1.0, max(0.0, effective_ppr))

@@ -8,20 +8,18 @@ import json
 import os
 
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 
 from src.extraction.extractor import ExtractedProfile, find_skills, flatten_skills
 from src.extraction.skills_data import all_skills_flat, skill_category
+from src.pipeline.extractor import get_llm_client
 from src.scoring.scorer import ScoreBreakdown, score_candidate
 from src.graph.state import RankingState
 
 load_dotenv()
 
-_llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    api_key=os.environ.get("GROQ_API_KEY"),
-    temperature=0,
-)
+# Placeholder for test mocks or lazy-loaded on demand
+_llm = None
+
 
 _EXTRACTION_PROMPT = """Tu es un assistant d'extraction de données RH. Analyse le texte de CV suivant et retourne UNIQUEMENT un objet JSON valide, sans aucun texte avant ou après, avec exactement cette structure :
 
@@ -95,8 +93,13 @@ def llm_extract_cv(state: RankingState) -> dict:
     cv_text = state["cv_text"]
 
     try:
+        client = _llm if _llm is not None else get_llm_client()
+        if client is None:
+            print("⚠️  llm_extract_cv failed (no API key configured), falling back to regex profile.")
+            return {"cv_profile": fallback_profile}
+
         prompt = _EXTRACTION_PROMPT.format(cv_text=cv_text)
-        response = _llm.invoke(prompt)
+        response = client.invoke(prompt)
         raw = response.content.strip()
 
         # Strip markdown code fences if the model added them despite instructions
@@ -244,7 +247,11 @@ def generate_explanation(state: RankingState) -> dict:
     )
 
     try:
-        response = _llm.invoke(prompt)
+        client = _llm if _llm is not None else get_llm_client()
+        if client is None:
+            return {"explanation": _fallback_explanation(breakdown)}
+
+        response = client.invoke(prompt)
         explanation = response.content.strip().strip('"')
         if not explanation:
             raise ValueError("Réponse vide du modèle.")

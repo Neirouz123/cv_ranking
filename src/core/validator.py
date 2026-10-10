@@ -421,3 +421,126 @@ def validate_candidate_graph(payload: ExtractedGraph | CandidateGraphPayload) ->
     return validator.validate_conflicts(payload)
 
 
+def validate_document_graph(payload: ExtractedGraph) -> ConflictReport:
+    """
+    Validate a technical specification / standard document graph for:
+    1. Protocol Incompatibilities (CONFLICTS_WITH relations)
+    2. Circular Constraints / Dependencies (A -> DEPENDS_ON -> B and B -> DEPENDS_ON -> A)
+    3. Conflicting Parameter Definitions across sections
+    """
+    conflicts: list[Conflict] = []
+
+    # 1. Check explicit CONFLICTS_WITH relations
+    for rel in payload.relations:
+        if rel.predicate == PredicateType.CONFLICTS_WITH:
+            e_subj = payload.get_entity(rel.subject_id)
+            e_obj = payload.get_entity(rel.object_id)
+            subj_name = e_subj.name if e_subj else rel.subject_id
+            obj_name = e_obj.name if e_obj else rel.object_id
+            conflicts.append(
+                Conflict(
+                    conflict_type=ConflictType.SPECIFICATION_CONFLICT,
+                    severity=ConflictSeverity.HIGH,
+                    message=f"Specification incompatibility: '{subj_name}' explicitly conflicts with '{obj_name}'.",
+                    entity_ids=[rel.subject_id, rel.object_id],
+                    penalty_weight=0.35,
+                    details={
+                        "subject": subj_name,
+                        "object": obj_name,
+                        "source_snippet": rel.source_snippet,
+                    },
+                )
+            )
+
+    # 2. Check Circular Dependencies among DEPENDS_ON relations
+    dep_edges = []
+    for rel in payload.relations:
+        if rel.predicate == PredicateType.DEPENDS_ON:
+            dep_edges.append((rel.subject_id, rel.object_id))
+
+    if dep_edges:
+        import networkx as nx
+        dg = nx.DiGraph()
+        dg.add_edges_from(dep_edges)
+        try:
+            cycles = list(nx.simple_cycles(dg))
+            for cycle in cycles:
+                cycle_names = []
+                for cid in cycle:
+                    ent = payload.get_entity(cid)
+                    cycle_names.append(ent.name if ent else cid)
+                cycle_str = " ➔ ".join(cycle_names) + f" ➔ {cycle_names[0]}"
+                conflicts.append(
+                    Conflict(
+                        conflict_type=ConflictType.CIRCULAR_DEPENDENCY,
+                        severity=ConflictSeverity.HIGH,
+                        message=f"Circular constraint detected across specifications: {cycle_str}.",
+                        entity_ids=list(cycle),
+                        penalty_weight=0.30,
+                        details={"cycle": cycle, "cycle_names": cycle_names},
+                    )
+                )
+        except Exception:
+            pass
+
+    # 3. Check Conflicting Parameter Definitions across sections
+    param_defs: dict[str, list[dict[str, Any]]] = {}
+    for rel in payload.relations:
+        if rel.predicate == PredicateType.DEFINES:
+            param_ent = payload.get_entity(rel.object_id)
+            sec_ent = payload.get_entity(rel.subject_id)
+            p_name = param_ent.name if param_ent else rel.object_id
+            p_clean = p_name.strip().upper()
+            sec_name = sec_ent.name if sec_ent else rel.subject_id
+            val = (
+                rel.metadata.get("value")
+                or (param_ent.metadata.get("value") if param_ent else None)
+                or ""
+            )
+            if p_clean not in param_defs:
+                param_defs[p_clean] = []
+            param_defs[p_clean].append({
+                "section": sec_name,
+                "section_id": rel.subject_id,
+                "param_id": rel.object_id,
+                "value": str(val).strip(),
+                "snippet": rel.source_snippet,
+            })
+
+    for p_name, defs in param_defs.items():
+        if len(defs) > 1:
+            values = {d["value"] for d in defs if d["value"]}
+            if len(values) > 1:
+                sec_list = ", ".join(f"{d['section']} ({d['value']})" for d in defs)
+                conflicts.append(
+                    Conflict(
+                        conflict_type=ConflictType.PARAMETER_MISMATCH,
+                        severity=ConflictSeverity.MEDIUM,
+                        message=f"Contradictory parameter specification for '{p_name}': defined with conflicting values across sections: {sec_list}.",
+                        entity_ids=[d["section_id"] for d in defs] + [defs[0]["param_id"]],
+                        penalty_weight=0.25,
+                        details={
+                            "parameter": p_name,
+                            "definitions": defs,
+                            "distinct_values": list(values),
+                        },
+                    )
+                )
+
+    total_penalty = min(sum(c.penalty_weight for c in conflicts), 1.0)
+    is_valid = len(conflicts) == 0
+
+    if not conflicts:
+        summary = "Document specification audit clean: no protocol conflicts, circular constraints, or parameter mismatches."
+    else:
+        summary = f"Detected {len(conflicts)} specification anomalies with aggregate penalty factor {total_penalty:.2f}."
+
+    return ConflictReport(
+        conflicts=[c.model_dump() for c in conflicts],
+        penalty_score=round(total_penalty, 3),
+        is_valid=is_valid,
+        summary=summary,
+    )
+
+
+

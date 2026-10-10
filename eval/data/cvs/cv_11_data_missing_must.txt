@@ -1,0 +1,12 @@
+David Moreau
+Senior Cloud Architect
+david.moreau@example.com
+
+Formation:
+2013 - 2018: Diplôme d'Ingénieur Réseaux et Cloud (Bac+5).
+
+Expérience Professionnelle:
+2018-06 - 2024-06: Cloud Infrastructure Architect chez CloudNative Inc
+- Conception d'architectures cloud haute disponibilité sur AWS.
+- Automatisation et streaming avec Apache Kafka et scripts Python.
+- Absence d'expérience sur Apache Spark et orchestration Kubernetes.

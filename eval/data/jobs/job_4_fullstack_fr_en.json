@@ -1,0 +1,10 @@
+{
+  "job_id": "job_4_fullstack_fr_en",
+  "title": "Fullstack Web Developer React / FastAPI",
+  "required_experience_years": 3.0,
+  "required_degree_level": 3,
+  "required_degree_name": "Bac+3 (Licence/Bachelor) ou Bac+5 (Master/Ingénieur)",
+  "must_have_skills": ["react", "fastapi"],
+  "nice_to_have_skills": ["typescript", "postgresql", "docker"],
+  "raw_text": "Titre du poste: Développeur Fullstack React / FastAPI (Bilingue FR/EN).\nNous recherchons un développeur Fullstack polyvalent justifiant d'au moins 3 ans d'expérience dans la livraison d'applications web modernes. Formation Bac+3 ou Bac+5.\nExigences incontournables (Must-have): Maîtrise de React côté frontend et développement d'APIs REST robustes avec FastAPI côté backend.\nAtouts appréciés (Nice-to-have): TypeScript, bases de données PostgreSQL, conteneurisation Docker.\nLe poste requiert une aisance bilingue en français et en anglais dans une équipe internationale."
+}

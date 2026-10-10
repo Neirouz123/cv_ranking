@@ -1,0 +1,11 @@
+Julien Mercier
+Data Analyst
+julien.mercier@example.com
+
+Formation:
+2021 - 2023: BTS Informatique (Bac+2).
+
+Expérience Professionnelle:
+2023-02 - 2024-03: Data Analyst chez Global Retail
+- Création de tableaux de bord Excel et requêtes SQL complexes.
+- Automatisation de scripts basiques en Python.

@@ -193,3 +193,126 @@ def match_skills_with_taxonomy(graph: Graph, target_parent_skill: str) -> list[d
 
     return output
 
+
+def get_document_dependencies(graph: Graph) -> list[dict[str, Any]]:
+    """
+    Traverse cv:dependsOn to list all dependencies between concepts, protocols, and specifications.
+    """
+    sparql_query = """
+    PREFIX cv: <http://recruitment.org/cv#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT DISTINCT ?concept ?conceptLabel ?specification ?specificationLabel WHERE {
+        ?concept cv:dependsOn ?specification .
+        OPTIONAL { ?concept rdfs:label ?conceptLabel }
+        OPTIONAL { ?specification rdfs:label ?specificationLabel }
+    }
+    """
+    results = graph.query(sparql_query)
+    output: list[dict[str, Any]] = []
+    for row in results:
+        c_uri = str(row.concept) if row.concept else ""
+        s_uri = str(row.specification) if row.specification else ""
+        c_lbl = str(row.conceptLabel) if row.conceptLabel else c_uri.split("#")[-1].replace("_", " ")
+        s_lbl = str(row.specificationLabel) if row.specificationLabel else s_uri.split("#")[-1].replace("_", " ")
+        output.append({
+            "concept": c_uri,
+            "concept_label": c_lbl,
+            "specification": s_uri,
+            "specification_label": s_lbl,
+        })
+    return output
+
+
+def get_protocol_conflicts(graph: Graph) -> list[dict[str, Any]]:
+    """
+    Query cv:conflictsWith to retrieve protocol and specification incompatibilities.
+    """
+    sparql_query = """
+    PREFIX cv: <http://recruitment.org/cv#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT DISTINCT ?p1 ?p1Label ?p2 ?p2Label WHERE {
+        ?p1 cv:conflictsWith ?p2 .
+        OPTIONAL { ?p1 rdfs:label ?p1Label }
+        OPTIONAL { ?p2 rdfs:label ?p2Label }
+    }
+    """
+    results = graph.query(sparql_query)
+    output: list[dict[str, Any]] = []
+    for row in results:
+        p1_uri = str(row.p1) if row.p1 else ""
+        p2_uri = str(row.p2) if row.p2 else ""
+        p1_lbl = str(row.p1Label) if row.p1Label else p1_uri.split("#")[-1].replace("_", " ")
+        p2_lbl = str(row.p2Label) if row.p2Label else p2_uri.split("#")[-1].replace("_", " ")
+        output.append({
+            "protocol_a": p1_uri,
+            "protocol_a_label": p1_lbl,
+            "protocol_b": p2_uri,
+            "protocol_b_label": p2_lbl,
+        })
+    return output
+
+
+def get_defined_parameters(graph: Graph) -> list[dict[str, Any]]:
+    """
+    Query cv:defines to list parameters declared across document sections.
+    """
+    sparql_query = """
+    PREFIX cv: <http://recruitment.org/cv#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT DISTINCT ?section ?sectionLabel ?parameter ?parameterLabel WHERE {
+        ?section cv:defines ?parameter .
+        OPTIONAL { ?section rdfs:label ?sectionLabel }
+        OPTIONAL { ?parameter rdfs:label ?parameterLabel }
+    }
+    """
+    results = graph.query(sparql_query)
+    output: list[dict[str, Any]] = []
+    for row in results:
+        sec_uri = str(row.section) if row.section else ""
+        par_uri = str(row.parameter) if row.parameter else ""
+        sec_lbl = str(row.sectionLabel) if row.sectionLabel else sec_uri.split("#")[-1].replace("_", " ")
+        par_lbl = str(row.parameterLabel) if row.parameterLabel else par_uri.split("#")[-1].replace("_", " ")
+        output.append({
+            "section": sec_uri,
+            "section_label": sec_lbl,
+            "parameter": par_uri,
+            "parameter_label": par_lbl,
+        })
+    return output
+
+
+def find_circular_constraints(graph: Graph) -> list[dict[str, Any]]:
+    """
+    Use transitive SPARQL property paths (cv:dependsOn+) to detect circular constraints.
+    """
+    sparql_query = """
+    PREFIX cv: <http://recruitment.org/cv#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+    SELECT DISTINCT ?a ?aLabel ?b ?bLabel WHERE {
+        ?a cv:dependsOn+ ?b .
+        ?b cv:dependsOn+ ?a .
+        FILTER(?a != ?b)
+        OPTIONAL { ?a rdfs:label ?aLabel }
+        OPTIONAL { ?b rdfs:label ?bLabel }
+    }
+    """
+    results = graph.query(sparql_query)
+    output: list[dict[str, Any]] = []
+    for row in results:
+        a_uri = str(row.a) if row.a else ""
+        b_uri = str(row.b) if row.b else ""
+        a_lbl = str(row.aLabel) if row.aLabel else a_uri.split("#")[-1].replace("_", " ")
+        b_lbl = str(row.bLabel) if row.bLabel else b_uri.split("#")[-1].replace("_", " ")
+        output.append({
+            "entity_a": a_uri,
+            "entity_a_label": a_lbl,
+            "entity_b": b_uri,
+            "entity_b_label": b_lbl,
+        })
+    return output
+
+

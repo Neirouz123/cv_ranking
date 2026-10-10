@@ -1,0 +1,18 @@
+OASIS Standard: MQTT Version 5.0 Specification Excerpt
+Protocol Dependencies, QoS Levels, and Session Parameters
+
+Section 2.1. Network Transport and Dependencies
+MQTT 5.0 is an IoT publish/subscribe messaging transport.
+MQTT 5.0 depends on TCP for in-order lossless communication.
+When transport encryption is requested, MQTT 5.0 depends on TLS 1.3.
+QoS Exactly-Once Delivery (QoS 2) depends on Packet Identifier State Storage.
+
+Section 3.1. Connection Management
+Section 3.1 defines KeepAlive = 60 seconds.
+Section 3.1 defines ReceiveMaximum = 65535 packets.
+Section 3.1 defines MaximumPacketSize = 268435455 bytes.
+
+Section 4.2. Session Expiry and State
+Section 4.2 defines SessionExpiryInterval = 300 seconds.
+Protocol Incompatibility: MQTT 5.0 CleanStart conflicts with MQTT 3.1.1 Legacy CleanSession flags.
+Furthermore, MQTT Plaintext conflicts with Enterprise Mutual TLS Requirements.

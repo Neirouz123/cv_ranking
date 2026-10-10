@@ -1,0 +1,14 @@
+Marc Lefebvre
+Senior Data Platform Lead
+marc.lefebvre@example.com
+
+Formation:
+2012 - 2017: Diplôme d'Ingénieur en Génie Informatique (Bac+5), INSA Lyon.
+
+Expérience Professionnelle:
+2017-09 - 2020-12: Data Engineer Senior chez BigData Corp
+- Pipeline de traitement distribué massif avec Apache Spark (PySpark) et Python.
+- Déploiement et orchestration de microservices sur clusters Kubernetes.
+2021-01 - 2024-06: Lead Data Platform chez CloudScale Solutions
+- Architecture de données streaming avec Apache Kafka et AWS.
+- Industrialisation CI/CD et infrastructure as code avec Docker et Kubernetes.

@@ -1,0 +1,12 @@
+Lucas Bernard
+Ingénieur Machine Learning Junior
+lucas.bernard@example.com
+
+Formation:
+2020 - 2022: Master en Informatique et Intelligence Artificielle (Bac+5), Université Paris-Saclay.
+
+Expérience Professionnelle:
+2022-09 - 2024-06: Junior ML Engineer chez DeepTech Labs
+- Développement et entraînement de modèles de Deep Learning en PyTorch et Python.
+- Évaluation expérimentale avec Scikit-learn et versioning de code sous Git.
+- Conteneurisation des modèles avec Docker pour les tests d'intégration.

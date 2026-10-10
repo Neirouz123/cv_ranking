@@ -1,0 +1,10 @@
+{
+  "job_id": "job_3_embedded_iot",
+  "title": "Embedded Systems & IoT Developer",
+  "required_experience_years": 3.0,
+  "required_degree_level": 3,
+  "required_degree_name": "Licence Pro, Bachelor ou Master en Électronique / Systèmes Embarqués",
+  "must_have_skills": ["c", "freertos"],
+  "nice_to_have_skills": ["c++", "mqtt", "arm", "linux"],
+  "raw_text": "Titre du poste: Embedded Systems & IoT Developer.\nNous recrutons un développeur systèmes embarqués et IoT disposant d'au moins 3 ans d'expérience. Diplôme minimum requis Bac+3 (Licence / Bachelor ou Master).\nCompétences impératives (Must-have): Programmation C bas niveau pour microcontrôleurs et développement sous FreeRTOS (gestion multitâche, sémaphores, files de messages).\nCompétences appréciées (Nice-to-have): C++, protocole MQTT pour les objets connectés, architecture ARM Cortex, environnement Linux embarqué.\nPassion pour l'optimisation mémoire et la consommation énergétique."
+}

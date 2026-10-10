@@ -1,0 +1,12 @@
+Sebastien Renaud
+Lead Backend Python
+sebastien.renaud@example.com
+
+Formation:
+2015 - 2020: Master Informatique (Bac+5).
+
+Expérience Professionnelle:
+2020-08 - 2024-06: Backend Architect chez DataWeb
+- Développement d'infrastructures d'APIs performantes avec FastAPI et Python.
+- Optimisation de requêtes SQL sur PostgreSQL et clusters Docker.
+- Aucune compétence frontend en React ou TypeScript.

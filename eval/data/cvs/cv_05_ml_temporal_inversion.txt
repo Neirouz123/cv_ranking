@@ -1,0 +1,11 @@
+Alexandre Petit
+Machine Learning Enthusiast
+alexandre.petit@example.com
+
+Formation:
+2020 - 2022: Master Informatique (Bac+5).
+
+Expérience Professionnelle:
+2024-06 - 2021-01: ML Engineer chez Invertia Tech
+- Développement de pipelines PyTorch et Python.
+- Entraînement de modèles de Machine Learning.

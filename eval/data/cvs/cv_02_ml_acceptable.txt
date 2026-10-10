@@ -1,0 +1,12 @@
+Camille Robert
+Data Scientist Junior
+camille.robert@example.com
+
+Formation:
+2020 - 2023: Licence Informatique et Statistique (Bac+3), Université de Lyon.
+
+Expérience Professionnelle:
+2023-01 - 2024-02: Data Scientist chez Analytics France
+- Entraînement de réseaux de neurones avec TensorFlow et Python.
+- Modélisation statistique et classification avec Scikit-learn.
+- Collaboration en équipe sous Git.

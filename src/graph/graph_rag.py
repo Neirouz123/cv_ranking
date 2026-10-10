@@ -29,7 +29,6 @@ from src.core.ontology import (
 from src.core.validator import ConsistencyValidator
 from src.graph.builder import GraphBuilder
 from src.graph.matching import TopologicalMatcher
-from src.pipeline.ranker import HybridRanker
 
 
 class GraphRAGSummaryEngine:
@@ -39,6 +38,8 @@ class GraphRAGSummaryEngine:
     """
 
     def __init__(self, use_llm: bool = True) -> None:
+        from src.pipeline.ranker import HybridRanker
+
         self.use_llm = use_llm
         self.builder = GraphBuilder(include_ontology_taxonomies=True)
         self.matcher = TopologicalMatcher()

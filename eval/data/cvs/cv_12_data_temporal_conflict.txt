@@ -1,0 +1,11 @@
+Thomas Rousseau
+Data Platform Engineer
+thomas.rousseau@example.com
+
+Formation:
+2014 - 2019: Master Big Data (Bac+5).
+
+Expérience Professionnelle:
+2025-01 - 2018-06: Lead Big Data chez Paradoxal Systems
+- Traitement distribué sous Apache Spark, Kubernetes et Python.
+- Pipeline Kafka en production.

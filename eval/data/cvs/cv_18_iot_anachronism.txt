@@ -1,0 +1,10 @@
+Nicolas Chevalier
+Firmware Engineer
+nicolas.chevalier@example.com
+
+Formation:
+2015 - 2020: Ingénieur Électronique (Bac+5).
+
+Expérience Professionnelle:
+2007-01 - 2009-12: Embedded Engineer chez RetroEmbedded
+- Développement firmware C sous FreeRTOS avec conteneurisation Docker.

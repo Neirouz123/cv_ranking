@@ -1,0 +1,11 @@
+Hugo Martin
+Développeur Backend Junior
+hugo.martin@example.com
+
+Formation:
+2021 - 2023: Licence Informatique (Bac+3).
+
+Expérience Professionnelle:
+2023-01 - 2024-06: Développeur Backend chez WebServices
+- Développement d'APIs REST en Python avec PostgreSQL.
+- Maintenance de scripts d'extraction de données.

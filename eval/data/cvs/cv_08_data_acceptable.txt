@@ -1,0 +1,11 @@
+Sarah Benali
+Data Engineer Confirmée
+sarah.benali@example.com
+
+Formation:
+2015 - 2020: Master Informatique Décisionnelle (Bac+5), Université Paris Cité.
+
+Expérience Professionnelle:
+2020-03 - 2024-05: Data Engineer chez FinData Services
+- Traitement batch à grande échelle avec Apache Spark et Python.
+- Ingestion de flux de données via Apache Kafka et conteneurisation Docker sur GCP.

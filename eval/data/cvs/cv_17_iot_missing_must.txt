@@ -1,0 +1,12 @@
+Mathieu Blanc
+Concepteur Hardware & PCB
+mathieu.blanc@example.com
+
+Formation:
+2016 - 2020: Master Électronique de Puissance (Bac+5).
+
+Expérience Professionnelle:
+2020-07 - 2024-06: Ingénieur CAO Électronique chez BoardDesign
+- Conception de circuits imprimés multicouches sous Altium Designer.
+- Routage haute fréquence et bancs de test matériels.
+- Aucune compétence en programmation firmware C ou FreeRTOS.

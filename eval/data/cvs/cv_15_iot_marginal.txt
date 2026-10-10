@@ -1,0 +1,11 @@
+Valentin Morel
+Développeur Frontend
+valentin.morel@example.com
+
+Formation:
+2020 - 2023: Bachelor Métiers du Web (Bac+3).
+
+Expérience Professionnelle:
+2023-01 - 2024-05: Intégrateur Web chez Studio Créatif
+- Développement d'interfaces utilisateur avec React et CSS.
+- Expérimentation personnelle sur cartes Arduino de loisir.

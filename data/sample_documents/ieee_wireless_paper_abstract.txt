@@ -1,0 +1,11 @@
+IEEE Research Excerpt: Wireless Cross-Layer Transport and Protocol Dependencies
+
+Section 1. Architectural Model
+The Wireless Mesh Architecture depends on IEEE 802.11 standards and requires Dynamic Congestion Control.
+Dynamic Congestion Control depends on Explicit Congestion Notification (ECN).
+Protocol Conflict: Legacy 802.11b DSSS conflicts with High-Throughput 802.11ax OFDMA spectrum allocation.
+
+Section 2. Transmission Parameters
+Section 2 defines BeaconInterval = 100 milliseconds.
+Section 2 defines RTS_Threshold = 2347 bytes.
+Section 2 defines RetryLimit = 7 attempts.
